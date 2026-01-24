@@ -934,6 +934,30 @@ body {
     background: var(--accent-green-hover);
 }
 
+.support-section {
+    margin: 15px 0;
+}
+
+.coffee-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    background: #ffdd00;
+    border: none;
+    border-radius: 4px;
+    color: #1a1a1a;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.coffee-btn:hover {
+    background: #e5c700;
+    transform: translateY(-1px);
+}
+
 .footer-credits {
     font-size: 12px;
     color: var(--text-faint);
