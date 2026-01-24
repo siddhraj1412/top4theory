@@ -50,9 +50,10 @@ function displayResults(data) {
     // Set scores
     document.getElementById('scoreVal').innerText = data.score;
     
-    // Display average rating as Letterboxd-style stars
+    // Display average rating as Letterboxd-style stars with clear labeling
     const avgRatingNum = parseFloat(data.avgRating) || 0;
-    document.getElementById('avgRating').innerText = getStarDisplay(avgRatingNum) + ` (${data.avgRating})`;
+    const tmdbRating = (avgRatingNum * 2).toFixed(1); // Convert 5-star to 10-point scale
+    document.getElementById('avgRating').innerHTML = getStarDisplay(avgRatingNum) + ` <span class="rating-detail">${data.avgRating}/5 (${tmdbRating}/10 on TMDB)</span>`;
     
     // Apply tier color styling
     const rankCard = document.getElementById('rankCard');
