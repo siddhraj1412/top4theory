@@ -55,30 +55,42 @@ router.get('/rank/:username', async (req, res) => {
         
         const moviePromises = top4Films.map(async (film) => {
             try {
-                // Extract year from slug if present (e.g., "parasite-2019")
-                const yearMatch = film.slug?.match(/-(\d{4})$/);
-                const yearHint = yearMatch ? parseInt(yearMatch[1]) : film.year;
-                
-                // Fetch official Letterboxd rating and details
+                // First, fetch official Letterboxd data (includes correct year!)
                 let letterboxdData = null;
                 if (film.slug) {
                     try {
                         letterboxdData = await scrapeMovieDetails(film.slug);
+                        console.log(`[API] Letterboxd data for "${film.slug}": ${letterboxdData?.title} (${letterboxdData?.year})`);
                     } catch (lbErr) {
                         console.log(`[API] Could not fetch Letterboxd data for ${film.slug}`);
                     }
                 }
                 
-                // Search TMDB by title for poster and additional metadata
-                const tmdbId = await searchMovieByTitle(film.title, yearHint);
+                // Use Letterboxd year as the PRIMARY source (most accurate)
+                // Fallback to slug year or film year
+                const yearMatch = film.slug?.match(/-(\d{4})$/);
+                const correctYear = letterboxdData?.year || (yearMatch ? parseInt(yearMatch[1]) : null) || film.year;
+                const correctTitle = letterboxdData?.title || film.title;
+                
+                console.log(`[API] Searching TMDB for: "${correctTitle}" (${correctYear})`);
+                
+                // Search TMDB with the correct year from Letterboxd
+                const tmdbId = await searchMovieByTitle(correctTitle, correctYear);
                 
                 if (tmdbId) {
-                    console.log(`[API] Found TMDB ID ${tmdbId} for "${film.title}"`);
+                    console.log(`[API] Found TMDB ID ${tmdbId} for "${correctTitle}"`);
                     const movieData = await getMovieDetails(tmdbId);
                     if (movieData) {
+                        // Verify the year matches (sanity check)
+                        if (correctYear && movieData.release_year && Math.abs(movieData.release_year - correctYear) > 3) {
+                            console.log(`[API] WARNING: Year mismatch for "${correctTitle}"! Letterboxd: ${correctYear}, TMDB: ${movieData.release_year}`);
+                        }
+                        
                         // Merge Letterboxd rating with TMDB data
                         return {
                             ...movieData,
+                            // Override with Letterboxd data if TMDB year seems wrong
+                            release_year: correctYear || movieData.release_year,
                             letterboxd_rating: letterboxdData?.letterboxdRating || null,
                             letterboxd_url: film.letterboxdUrl || letterboxdData?.letterboxdUrl
                         };
@@ -86,10 +98,10 @@ router.get('/rank/:username', async (req, res) => {
                 }
                 
                 // Fallback: return basic info with Letterboxd data if available
-                console.log(`[API] Using fallback data for "${film.title}"`);
+                console.log(`[API] Using fallback data for "${correctTitle}"`);
                 return {
-                    title: letterboxdData?.title || film.title,
-                    release_year: letterboxdData?.year || yearHint || 2000,
+                    title: correctTitle,
+                    release_year: correctYear || 2000,
                     rating: 7.0,
                     letterboxd_rating: letterboxdData?.letterboxdRating || null,
                     genres: letterboxdData?.genres || [],
@@ -171,11 +183,15 @@ router.get('/rank/:username', async (req, res) => {
             tierColor: rankData.tierColor,
             score: rankData.score,
             avgRating: rankData.avgRating,
+            scoreBreakdown: rankData.scoreBreakdown,  // Include score breakdown
             analysis: rankData.analysis,
             reasons: rankData.reasons
         };
 
         console.log(`[API] Result: Level ${rankData.level} - ${rankData.tierName} (Score: ${rankData.score})`);
+        if (rankData.scoreBreakdown) {
+            console.log(`[API] Breakdown: Rating=${rankData.scoreBreakdown.rating} + Genre=${rankData.scoreBreakdown.genre} + Rarity=${rankData.scoreBreakdown.rarity} + Era=${rankData.scoreBreakdown.era} + Traits=${rankData.scoreBreakdown.traits} - Penalty=${rankData.scoreBreakdown.penalty}`);
+        }
         res.json(response);
 
     } catch (error) {

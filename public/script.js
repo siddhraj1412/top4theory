@@ -300,7 +300,7 @@ function displayFullProfileAnalysis(data) {
                     <p><strong>How we calculated your score:</strong></p>
                 </div>
                 <div class="score-factors">
-                    ${getScoreFactors(analysis, movies, data.score)}
+                    ${getScoreFactors(analysis, movies, data.score, data.scoreBreakdown)}
                 </div>
             </div>
         </div>
@@ -528,112 +528,106 @@ function getTasteInsight(movies, analysis) {
 }
 
 // Helper: Get score breakdown factors
-// Uses backend score and shows proportional breakdown
-function getScoreFactors(analysis, movies, totalScore) {
+// Uses backend scoreBreakdown for accurate display
+function getScoreFactors(analysis, movies, totalScore, scoreBreakdown) {
+    // Use backend breakdown if available, otherwise calculate locally
+    const breakdown = scoreBreakdown || {};
+    
     const factors = [];
     
-    // Get actual values from analysis
-    const avgRarity = analysis.avgRarity || 0;
+    // Get values from backend breakdown or calculate fallback
+    const ratingScore = breakdown.rating !== undefined ? breakdown.rating : 
+        Math.round(Math.min(20, Math.max(0, ((analysis.avgRating || 7) - 5) * 5)));
+    const genreScore = breakdown.genre !== undefined ? breakdown.genre : 
+        Math.round(Math.min(20, (analysis.genreCount || 0) * 2.5));
+    const rarityScore = breakdown.rarity !== undefined ? breakdown.rarity : 
+        Math.round(Math.min(20, (analysis.avgRarity || 0) * 0.4));
+    const eraScore = breakdown.era !== undefined ? breakdown.era : 
+        Math.round(Math.min(20, (analysis.yearSpread || 0) * 0.25));
+    const traitScore = breakdown.traits !== undefined ? breakdown.traits : 0;
+    const penalty = breakdown.penalty !== undefined ? breakdown.penalty : 0;
+    
+    // Get descriptive values
     const genreCount = analysis.genreCount || 0;
     const yearSpread = analysis.yearSpread || 0;
     const auteurCount = analysis.auteurCount || 0;
-    
-    // Count foreign films from movies array
     const foreignCount = movies.filter(m => m.is_foreign).length;
-    const hasPreWar = movies.some(m => m.release_year < 1970);
-    const hasModernClassic = movies.some(m => m.release_year >= 2000 && parseFloat(m.rating) >= 8.0);
+    const avgRating = movies.length > 0 ? 
+        movies.map(m => parseFloat(m.rating || 0)).reduce((a, b) => a + b, 0) / movies.length : 0;
     
-    // Get average rating from movies
-    const ratings = movies.map(m => parseFloat(m.rating || 0)).filter(r => r > 0);
-    const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+    // 1. RATING QUALITY
+    factors.push({ 
+        label: 'Film Quality', 
+        score: ratingScore, 
+        max: 20, 
+        desc: `${avgRating.toFixed(1)} avg rating`,
+        positive: true
+    });
     
-    // Calculate raw scores (same as backend)
-    // 1. RATING QUALITY (Max 20)
-    const ratingScore = Math.round(Math.min(20, Math.max(0, (avgRating - 5) * 5)));
-    if (ratingScore > 0) {
-        factors.push({ 
-            label: 'Film Quality', 
-            score: ratingScore, 
-            max: 20, 
-            desc: `${avgRating.toFixed(1)} avg rating`
-        });
-    }
+    // 2. GENRE DIVERSITY
+    factors.push({ 
+        label: 'Genre Diversity', 
+        score: genreScore, 
+        max: 20, 
+        desc: `${genreCount} unique genres`,
+        positive: true
+    });
     
-    // 2. GENRE DIVERSITY (Max 20)
-    const genreScore = Math.round(Math.min(20, genreCount * 2.5));
-    if (genreScore > 0) {
-        factors.push({ 
-            label: 'Genre Diversity', 
-            score: genreScore, 
-            max: 20, 
-            desc: `${genreCount} unique genres`
-        });
-    }
+    // 3. OBSCURITY/RARITY
+    factors.push({ 
+        label: 'Hidden Gems', 
+        score: rarityScore, 
+        max: 20, 
+        desc: `Beyond mainstream picks`,
+        positive: true
+    });
     
-    // 3. OBSCURITY/RARITY (Max 20)
-    const rarityScore = Math.round(Math.min(20, avgRarity * 0.4));
-    if (rarityScore > 0) {
-        factors.push({ 
-            label: 'Hidden Gems', 
-            score: rarityScore, 
-            max: 20, 
-            desc: `Beyond mainstream picks`
-        });
-    }
+    // 4. ERA SPREAD
+    factors.push({ 
+        label: 'Era Range', 
+        score: eraScore, 
+        max: 20, 
+        desc: `${yearSpread} year span`,
+        positive: true
+    });
     
-    // 4. ERA SPREAD (Max 20)
-    const eraScore = Math.round(Math.min(20, yearSpread * 0.25));
-    if (eraScore > 0) {
-        factors.push({ 
-            label: 'Era Range', 
-            score: eraScore, 
-            max: 20, 
-            desc: `${yearSpread} year span`
-        });
-    }
-    
-    // 5. CINEPHILE TRAITS (Max 20)
-    let traitScore = 0;
+    // 5. CINEPHILE TRAITS
     let traitDescs = [];
+    if (foreignCount > 0) traitDescs.push(`${foreignCount} foreign`);
+    if (analysis.hasClassic) traitDescs.push('classic era');
+    if (auteurCount > 0) traitDescs.push(`${auteurCount} auteur`);
     
-    if (foreignCount > 0) {
-        traitScore += 5;
-        traitDescs.push(`${foreignCount} foreign`);
-    }
-    if (hasPreWar) {
-        traitScore += 5;
-        traitDescs.push('classic era');
-    }
-    if (auteurCount > 0) {
-        const auteurPts = Math.min(5, Math.round(auteurCount * 1.5));
-        traitScore += auteurPts;
-        traitDescs.push(`${auteurCount} auteur`);
-    }
-    if (hasModernClassic) {
-        traitScore += 5;
-        traitDescs.push('modern classic');
-    }
+    factors.push({ 
+        label: 'Cinephile Traits', 
+        score: traitScore, 
+        max: 20, 
+        desc: traitDescs.length > 0 ? traitDescs.join(', ') : 'No special traits',
+        positive: true
+    });
     
-    traitScore = Math.round(Math.min(20, traitScore));
-    if (traitScore > 0) {
+    // 6. PENALTY (if any)
+    if (penalty > 0) {
+        const franchiseCount = analysis.franchiseCount || 0;
         factors.push({ 
-            label: 'Cinephile Traits', 
-            score: traitScore, 
-            max: 20, 
-            desc: traitDescs.join(', ')
+            label: 'Franchise Penalty', 
+            score: penalty, 
+            max: 12, 
+            desc: `${franchiseCount} franchise films - try branching out!`,
+            positive: false
         });
     }
     
-    // Build HTML - show all factors with score > 0
+    // Build HTML
     let html = '<div class="score-breakdown">';
     
-    factors.forEach(f => {
+    // Show positive factors first
+    factors.filter(f => f.positive).forEach(f => {
         const percentage = (f.score / f.max) * 100;
         html += `
             <div class="score-factor">
                 <div class="factor-header">
                     <span class="factor-label">${f.label}</span>
-                    <span class="factor-points">+${f.score} pts</span>
+                    <span class="factor-points ${f.score === 0 ? 'zero' : ''}">+${f.score} pts</span>
                 </div>
                 <div class="factor-bar">
                     <div class="factor-bar-fill" style="width: ${percentage}%"></div>
@@ -643,7 +637,24 @@ function getScoreFactors(analysis, movies, totalScore) {
         `;
     });
     
-    // Show total using backend score for consistency
+    // Show penalties (negative factors)
+    factors.filter(f => !f.positive).forEach(f => {
+        const percentage = (f.score / f.max) * 100;
+        html += `
+            <div class="score-factor penalty">
+                <div class="factor-header">
+                    <span class="factor-label">⚠️ ${f.label}</span>
+                    <span class="factor-points negative">-${f.score} pts</span>
+                </div>
+                <div class="factor-bar penalty-bar">
+                    <div class="factor-bar-fill penalty-fill" style="width: ${percentage}%"></div>
+                </div>
+                <div class="factor-desc">${f.desc}</div>
+            </div>
+        `;
+    });
+    
+    // Show total score only
     html += `
         <div class="score-total">
             <span>Total Score</span>

@@ -716,6 +716,56 @@ body {
     color: var(--text-muted);
 }
 
+/* Penalty styling */
+.score-factor.penalty {
+    background: rgba(220, 53, 69, 0.1);
+    padding: 8px;
+    border-radius: 4px;
+    margin-top: 8px;
+    border-left: 3px solid #dc3545;
+}
+
+.factor-points.negative {
+    color: #dc3545 !important;
+    font-weight: 600;
+}
+
+.factor-points.zero {
+    color: var(--text-muted);
+}
+
+.penalty-bar {
+    background: rgba(220, 53, 69, 0.2);
+}
+
+.penalty-fill {
+    background: #dc3545 !important;
+}
+
+/* Score calculation display */
+.score-calculation {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    margin-top: 12px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+}
+
+.calc-formula {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.calc-result {
+    color: var(--accent-green);
+    font-size: 18px;
+    font-weight: 700;
+}
+
 .score-total {
     display: flex;
     justify-content: space-between;

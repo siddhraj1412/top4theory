@@ -171,7 +171,101 @@ async function getMovieDetails(tmdbId) {
 }
 
 // =====================================================
-// HELPER: Search TMDB by movie title
+// HELPER: Normalize title for comparison
+// =====================================================
+function normalizeTitle(title) {
+    if (!title) return '';
+    return title
+        .toLowerCase()
+        .replace(/[''`´]/g, "'")      // Normalize quotes
+        .replace(/[""„]/g, '"')       // Normalize double quotes
+        .replace(/[:\-–—,\.!?]/g, ' ')  // Replace punctuation with space
+        .replace(/&/g, 'and')         // & to and
+        .replace(/\s+/g, ' ')         // Multiple spaces to single
+        .replace(/[^a-z0-9\s']/g, '') // Remove special chars
+        .trim();
+}
+
+// =====================================================
+// HELPER: Check if titles match (VERY STRICT comparison)
+// "Linda Linda Linda" should NOT match "The Story of Linda"
+// =====================================================
+function titlesMatch(searchTitle, resultTitle) {
+    if (!searchTitle || !resultTitle) return false;
+    
+    const normSearch = normalizeTitle(searchTitle);
+    const normResult = normalizeTitle(resultTitle);
+    
+    // Exact match - BEST
+    if (normSearch === normResult) return true;
+    
+    // Handle "The" prefix differences (e.g., "Godfather" vs "The Godfather")
+    const searchNoThe = normSearch.replace(/^the /, '');
+    const resultNoThe = normResult.replace(/^the /, '');
+    if (searchNoThe === resultNoThe) return true;
+    if (searchNoThe === normResult) return true;
+    if (normSearch === resultNoThe) return true;
+    
+    // Handle "A" prefix differences
+    const searchNoA = normSearch.replace(/^a /, '');
+    const resultNoA = normResult.replace(/^a /, '');
+    if (searchNoA === resultNoA) return true;
+    
+    // STRICT: Do NOT allow partial matches!
+    // "Linda Linda Linda" should NOT match "The Story of Linda"
+    // "Yojimbo" should NOT match "Zatoichi Meets Yojimbo"
+    // "Cure" should NOT match "The Cure for Wellness"
+    
+    return false;
+}
+
+// =====================================================
+// HELPER: Calculate title similarity (0-100)
+// STRICT: Requires high word overlap, not just substring
+// =====================================================
+function calculateTitleSimilarity(title1, title2) {
+    const norm1 = normalizeTitle(title1);
+    const norm2 = normalizeTitle(title2);
+    
+    if (norm1 === norm2) return 100;
+    if (!norm1 || !norm2) return 0;
+    
+    // Split into words (ignore very short words)
+    const words1 = norm1.split(' ').filter(w => w.length > 1);
+    const words2 = norm2.split(' ').filter(w => w.length > 1);
+    
+    if (words1.length === 0 || words2.length === 0) return 0;
+    
+    // Count EXACT word matches
+    const matchingWords = words1.filter(w => words2.includes(w));
+    
+    // Calculate match ratio based on BOTH titles
+    // "Linda Linda Linda" (3 words) vs "The Story of Linda" (4 words)
+    // Matching: 1 word ("linda") - but "linda" appears 3 times in first title
+    // This should be LOW similarity
+    
+    const uniqueWords1 = [...new Set(words1)];
+    const uniqueWords2 = [...new Set(words2)];
+    const uniqueMatches = uniqueWords1.filter(w => uniqueWords2.includes(w));
+    
+    // Need high overlap in BOTH directions
+    const ratio1 = uniqueMatches.length / uniqueWords1.length; // How much of title1 is in title2
+    const ratio2 = uniqueMatches.length / uniqueWords2.length; // How much of title2 is in title1
+    
+    // Use the MINIMUM ratio (stricter matching)
+    const minRatio = Math.min(ratio1, ratio2);
+    
+    // If one title is much longer than the other, penalize
+    const lengthRatio = Math.min(norm1.length, norm2.length) / Math.max(norm1.length, norm2.length);
+    
+    // Final similarity requires BOTH good word overlap AND similar length
+    const similarity = Math.round(minRatio * lengthRatio * 100);
+    
+    return similarity;
+}
+
+// =====================================================
+// HELPER: Search TMDB - EXACT TITLE + YEAR matching
 // =====================================================
 async function searchMovieByTitle(title, year = null) {
     try {
@@ -181,16 +275,124 @@ async function searchMovieByTitle(title, year = null) {
             return null;
         }
 
-        let url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(title)}`;
-        if (year) {
-            url += `&year=${year}`;
+        const cleanTitle = title.replace(/['']/g, "'").trim();
+        console.log(`[TMDB] ========================================`);
+        console.log(`[TMDB] Searching: "${cleanTitle}" | YEAR: ${year || 'unknown'}`);
+        
+        // ALWAYS search without year first to get ALL results
+        const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(cleanTitle)}&language=en-US`;
+        const response = await axios.get(url, { timeout: 10000 });
+        const results = response.data.results || [];
+        
+        if (results.length === 0) {
+            console.log(`[TMDB] No results found for "${cleanTitle}"`);
+            return null;
         }
         
-        const response = await axios.get(url, { timeout: 10000 });
-        if (response.data.results && response.data.results.length > 0) {
-            return response.data.results[0].id;
+        console.log(`[TMDB] Found ${results.length} results`);
+        
+        // Log first few results for debugging
+        results.slice(0, 5).forEach((m, i) => {
+            const y = m.release_date ? m.release_date.substring(0, 4) : 'N/A';
+            console.log(`[TMDB]   ${i+1}. "${m.title}" (${y}) [original: "${m.original_title}"]`);
+        });
+        
+        // If we have a year, YEAR MATCHING IS THE PRIORITY
+        if (year && year > 1800) {
+            // STEP 1: Find EXACT title + exact year match (BEST)
+            for (const movie of results) {
+                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
+                if (movieYear === year) {
+                    const titleOK = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
+                    if (titleOK) {
+                        console.log(`[TMDB] ✅ PERFECT: "${movie.title}" (${movieYear}) - exact title + year`);
+                        return movie.id;
+                    }
+                }
+            }
+            
+            // STEP 2: Find EXACT title + close year (±1 year - regional release differences)
+            for (const movie of results) {
+                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
+                if (Math.abs(movieYear - year) <= 1) {
+                    const titleOK = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
+                    if (titleOK) {
+                        console.log(`[TMDB] ✅ CLOSE: "${movie.title}" (${movieYear}) - exact title, year ±1`);
+                        return movie.id;
+                    }
+                }
+            }
+            
+            // STEP 3: Find exact year + HIGH title similarity (for different translations)
+            for (const movie of results) {
+                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
+                if (movieYear === year) {
+                    const similarity = Math.max(
+                        calculateTitleSimilarity(cleanTitle, movie.title),
+                        calculateTitleSimilarity(cleanTitle, movie.original_title)
+                    );
+                    if (similarity >= 70) {
+                        console.log(`[TMDB] ✅ YEAR + SIMILAR TITLE: "${movie.title}" (${movieYear}) - similarity: ${similarity}%`);
+                        return movie.id;
+                    }
+                }
+            }
+            
+            // STEP 4: Find exact year even with low similarity (year from Letterboxd is trusted)
+            // But ONLY if the search title words appear in the result
+            for (const movie of results) {
+                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
+                if (movieYear === year) {
+                    // Check that at least the main words match
+                    const searchWords = normalizeTitle(cleanTitle).split(' ').filter(w => w.length > 2);
+                    const resultTitle = normalizeTitle(movie.title + ' ' + movie.original_title);
+                    const matchingWords = searchWords.filter(w => resultTitle.includes(w));
+                    
+                    // At least half the search words should appear
+                    if (matchingWords.length >= Math.ceil(searchWords.length / 2)) {
+                        console.log(`[TMDB] ⚠️ YEAR MATCH: "${movie.title}" (${movieYear}) - ${matchingWords.length}/${searchWords.length} words match`);
+                        return movie.id;
+                    }
+                }
+            }
+            
+            // STEP 5: NO MATCH - don't return wrong movie!
+            const firstResult = results[0];
+            const firstYear = firstResult.release_date ? parseInt(firstResult.release_date.substring(0, 4)) : 0;
+            console.log(`[TMDB] ❌ NO MATCH! Wanted "${cleanTitle}" (${year})`);
+            console.log(`[TMDB] ❌ Best result: "${firstResult.title}" (${firstYear}) - REJECTED`);
+            
+            // Return null - better to show fallback data than wrong movie!
+            return null;
         }
+        
+        // No year provided - ONLY return if title matches exactly
+        for (const movie of results) {
+            const titleOK = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
+            if (titleOK) {
+                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
+                console.log(`[TMDB] ✅ Title match (no year): "${movie.title}" (${movieYear})`);
+                return movie.id;
+            }
+        }
+        
+        // Check for high similarity as fallback
+        for (const movie of results) {
+            const similarity = Math.max(
+                calculateTitleSimilarity(cleanTitle, movie.title),
+                calculateTitleSimilarity(cleanTitle, movie.original_title)
+            );
+            if (similarity >= 80) {
+                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
+                console.log(`[TMDB] ⚠️ High similarity (${similarity}%): "${movie.title}" (${movieYear})`);
+                return movie.id;
+            }
+        }
+        
+        // NO fallback to first result anymore - that causes wrong matches
+        console.log(`[TMDB] ❌ No title match found for "${cleanTitle}" - rejecting all results`);
         return null;
+        
     } catch (error) {
         console.error(`[TMDB] Error searching for "${title}":`, error.message);
         return null;
@@ -320,14 +522,18 @@ function calculateRank(movies) {
     // =====================================================
     // BALANCED SCORING SYSTEM - Equal weight distribution
     // Total possible: 100 points, evenly spread across factors
+    // IMPORTANT: Round each score BEFORE adding to prevent mismatch
     // =====================================================
     let score = 0;
     let reasons = [];
+    let scoreBreakdown = {}; // Track individual scores
 
     // ----- 1. RATING QUALITY (Max 20 points) -----
     // Linear scale from 5.0 to 9.0 rating
-    const ratingScore = Math.min(20, Math.max(0, (analysis.avgRating - 5) * 5));
+    const ratingScoreRaw = Math.min(20, Math.max(0, (analysis.avgRating - 5) * 5));
+    const ratingScore = Math.round(ratingScoreRaw);
     score += ratingScore;
+    scoreBreakdown.rating = ratingScore;
     if (analysis.avgRating >= 8.0) {
         reasons.push(`Excellent taste: ${analysis.avgRating.toFixed(1)} avg rating`);
     } else if (analysis.avgRating >= 7.0) {
@@ -338,8 +544,10 @@ function calculateRank(movies) {
 
     // ----- 2. GENRE DIVERSITY (Max 20 points) -----
     // 4 movies can have ~8-12 genres combined, scale accordingly
-    const genreScore = Math.min(20, analysis.genreCount * 2.5);
+    const genreScoreRaw = Math.min(20, analysis.genreCount * 2.5);
+    const genreScore = Math.round(genreScoreRaw);
     score += genreScore;
+    scoreBreakdown.genre = genreScore;
     if (analysis.genreCount >= 7) {
         reasons.push(`Diverse palette: ${analysis.genreCount} genres explored`);
     } else if (analysis.genreCount >= 5) {
@@ -349,8 +557,10 @@ function calculateRank(movies) {
     // ----- 3. OBSCURITY/RARITY (Max 20 points) -----
     // avgRarity is 0-50, scale to 0-20
     const avgRarity = analysis.totalRarityScore / validMovies.length;
-    const rarityScore = Math.min(20, avgRarity * 0.4);
+    const rarityScoreRaw = Math.min(20, avgRarity * 0.4);
+    const rarityScore = Math.round(rarityScoreRaw);
     score += rarityScore;
+    scoreBreakdown.rarity = rarityScore;
     if (avgRarity >= 35) {
         reasons.push("Deep cuts - you dig beyond the surface");
     } else if (avgRarity >= 20) {
@@ -359,8 +569,10 @@ function calculateRank(movies) {
 
     // ----- 4. ERA SPREAD (Max 20 points) -----
     // Year spread of 0-80+ years, scale to 0-20
-    const eraScore = Math.min(20, analysis.yearSpread * 0.25);
+    const eraScoreRaw = Math.min(20, analysis.yearSpread * 0.25);
+    const eraScore = Math.round(eraScoreRaw);
     score += eraScore;
+    scoreBreakdown.era = eraScore;
     if (analysis.yearSpread >= 50) {
         reasons.push(`Time traveler: spans ${analysis.yearSpread} years of cinema`);
     } else if (analysis.yearSpread >= 25) {
@@ -395,18 +607,33 @@ function calculateRank(movies) {
         reasons.push("Eye for modern masterpieces");
     }
     
-    score += Math.min(20, traitScore);
+    const finalTraitScore = Math.min(20, traitScore);
+    score += finalTraitScore;
+    scoreBreakdown.traits = Math.round(finalTraitScore);
 
     // ----- PENALTIES (reduce score) -----
+    let penalty = 0;
     if (analysis.franchiseCount >= 3) {
-        score -= 12;
+        penalty = 12;
+        score -= penalty;
         reasons.push("Franchise heavy - branch out!");
     } else if (analysis.franchiseCount >= 2) {
-        score -= 6;
+        penalty = 6;
+        score -= penalty;
     }
+    scoreBreakdown.penalty = penalty;
+
+    // Calculate total before clamping
+    const rawTotal = scoreBreakdown.rating + scoreBreakdown.genre + scoreBreakdown.rarity + 
+                     scoreBreakdown.era + scoreBreakdown.traits - scoreBreakdown.penalty;
+    scoreBreakdown.rawTotal = rawTotal;
 
     // Ensure score stays in 0-100 range
-    score = Math.max(0, Math.min(100, score));
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    scoreBreakdown.finalScore = score;
+
+    // Log the breakdown for debugging
+    console.log(`[SCORE] Breakdown: Rating=${scoreBreakdown.rating} + Genre=${scoreBreakdown.genre} + Rarity=${scoreBreakdown.rarity} + Era=${scoreBreakdown.era} + Traits=${scoreBreakdown.traits} - Penalty=${scoreBreakdown.penalty} = ${score}`);
 
     // =====================================================
     // LEVEL DETERMINATION - Pure score-based, equal intervals
@@ -447,8 +674,9 @@ function calculateRank(movies) {
         tierIcon: tierInfo.icon,
         tierDescription: tierInfo.description,
         tierColor: tierInfo.color,
-        score: Math.round(score),
+        score: score,
         avgRating: letterboxdRating,
+        scoreBreakdown: scoreBreakdown,  // Include breakdown for frontend
         analysis: {
             genreCount: analysis.genreCount,
             yearSpread: analysis.yearSpread,
@@ -458,7 +686,8 @@ function calculateRank(movies) {
             auteurCount: analysis.auteurCount,
             hasForeign: analysis.hasForeign,
             hasClassic: analysis.hasPreWar,
-            hasSilentOrBW: analysis.hasSilentEra || analysis.hasBlackWhite
+            hasSilentOrBW: analysis.hasSilentEra || analysis.hasBlackWhite,
+            franchiseCount: analysis.franchiseCount
         },
         reasons
     };
