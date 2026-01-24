@@ -8,16 +8,16 @@ const memoryCache = new Map();
 // TIER DEFINITIONS - The 10-Level Hierarchy
 // =====================================================
 const TIERS = {
-    1: { name: "The Casual Viewer", icon: "📺", description: "You watch movies to kill time.", color: "#6c757d" },
-    2: { name: "The Blockbuster Buff", icon: "🍿", description: "You love spectacle and big theaters.", color: "#fd7e14" },
-    3: { name: "The Modern Fan", icon: "🎟️", description: "You have good taste, but you live in the present.", color: "#20c997" },
-    4: { name: "The Genre Surfer", icon: "🌊", description: "You appreciate variety and aren't stuck in one mood.", color: "#0dcaf0" },
-    5: { name: "The Cult Classic Hunter", icon: "🥃", description: "You like movies that feel like a secret handshake.", color: "#6f42c1" },
-    6: { name: "The Auteur Devotee", icon: "🎩", description: "You don't just watch movies; you watch directors.", color: "#d63384" },
-    7: { name: "The Film Historian", icon: "📜", description: "You respect the roots of the medium.", color: "#ffc107" },
-    8: { name: "The Criterion Collector", icon: "🎞️", description: "You treat cinema as high art.", color: "#198754" },
-    9: { name: "The Experimental Visionary", icon: "👁️", description: "You see things other people miss.", color: "#dc3545" },
-    10: { name: "The Cinema Deity", icon: "🏆", description: "Your taste is flawless. You are the algorithm.", color: "#ffd700" }
+    1: { name: "The Casual Viewer", icon: "📺", description: "You watch movies to pass the time.", color: "#6c757d" },
+    2: { name: "The Popcorn Enthusiast", icon: "🍿", description: "You enjoy the movie-going experience.", color: "#fd7e14" },
+    3: { name: "The Avid Watcher", icon: "🎟️", description: "You have solid taste and watch regularly.", color: "#20c997" },
+    4: { name: "The Eclectic Explorer", icon: "🌊", description: "You appreciate variety across genres.", color: "#0dcaf0" },
+    5: { name: "The Dedicated Cinephile", icon: "🥃", description: "You dig deeper than most viewers.", color: "#6f42c1" },
+    6: { name: "The Refined Curator", icon: "🎩", description: "Your taste is sharp and intentional.", color: "#d63384" },
+    7: { name: "The Cinema Connoisseur", icon: "🍷", description: "You have excellent, well-rounded taste.", color: "#ffc107" },
+    8: { name: "The Elite Cinephile", icon: "🎞️", description: "Your picks show deep film appreciation.", color: "#198754" },
+    9: { name: "The Master Curator", icon: "👁️", description: "You see cinema on another level.", color: "#dc3545" },
+    10: { name: "The Cinema Deity", icon: "🏆", description: "Your taste is legendary. Absolute peak.", color: "#ffd700" }
 };
 
 // =====================================================
