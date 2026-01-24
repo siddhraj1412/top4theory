@@ -46,12 +46,32 @@ async function scrapeUserTop4(username) {
                 filmSlug = href.split('/film/')[1]?.replace(/\/$/, '');
             }
             
-            console.log(`[SCRAPER] Method 1 - Found: "${filmName}" slug: "${filmSlug}"`);
+            // CRITICAL: Extract year from data-item-name attribute!
+            // It contains "Movie Title (YYYY)" format
+            const posterDiv = $(element).find('[data-item-name]');
+            const dataItemName = posterDiv.attr('data-item-name') || '';
+            let year = null;
+            const yearMatch = dataItemName.match(/\((\d{4})\)$/);
+            if (yearMatch) {
+                year = parseInt(yearMatch[1]);
+            }
+            
+            // Also try data-item-full-display-name
+            if (!year) {
+                const fullDisplayName = posterDiv.attr('data-item-full-display-name') || '';
+                const yearMatch2 = fullDisplayName.match(/\((\d{4})\)$/);
+                if (yearMatch2) {
+                    year = parseInt(yearMatch2[1]);
+                }
+            }
+            
+            console.log(`[SCRAPER] Method 1 - Found: "${filmName}" (${year || 'NO YEAR'}) slug: "${filmSlug}"`);
             
             if (filmName && filmName.trim()) {
                 top4Movies.push({
                     slug: filmSlug || titleToSlug(filmName),
                     title: filmName.trim(),
+                    year: year || null,
                     letterboxdUrl: filmSlug ? `https://letterboxd.com/film/${filmSlug}/` : null
                 });
             }
@@ -63,14 +83,34 @@ async function scrapeUserTop4(username) {
             $('[data-film-slug]').slice(0, 4).each((index, element) => {
                 const filmSlug = $(element).attr('data-film-slug');
                 const img = $(element).find('img');
-                const filmName = img.attr('alt') || $(element).attr('data-film-name') || formatSlugToTitle(filmSlug);
                 
-                console.log(`[SCRAPER] Method 2 - Found: "${filmName}" slug: "${filmSlug}"`);
+                // Try to get title with year from data attributes
+                const dataItemName = $(element).attr('data-item-name') || '';
+                const dataFullDisplayName = $(element).attr('data-item-full-display-name') || '';
+                const altText = img.attr('alt') || '';
+                
+                // Extract year from data-item-name (format: "Movie Title (YYYY)")
+                let letterboxdYear = null;
+                let filmName = '';
+                
+                const nameWithYear = dataItemName || dataFullDisplayName || altText;
+                const yearMatch = nameWithYear.match(/\((\d{4})\)\s*$/);
+                
+                if (yearMatch) {
+                    letterboxdYear = parseInt(yearMatch[1], 10);
+                    filmName = nameWithYear.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+                    console.log(`[SCRAPER] Method 2 - Extracted year ${letterboxdYear} from "${nameWithYear}"`);
+                } else {
+                    filmName = $(element).attr('data-film-name') || formatSlugToTitle(filmSlug);
+                }
+                
+                console.log(`[SCRAPER] Method 2 - Found: "${filmName}" (${letterboxdYear || 'no year'}) slug: "${filmSlug}"`);
                 
                 if (filmSlug && !top4Movies.some(m => m.slug === filmSlug)) {
                     top4Movies.push({
                         slug: filmSlug,
                         title: filmName,
+                        letterboxdYear: letterboxdYear,
                         letterboxdUrl: `https://letterboxd.com/film/${filmSlug}/`
                     });
                 }
@@ -86,14 +126,33 @@ async function scrapeUserTop4(username) {
                 const href = $(element).attr('href');
                 const slug = href.replace('/film/', '').replace(/\/$/, '');
                 const img = $(element).find('img');
-                const filmName = img.attr('alt') || $(element).attr('title') || formatSlugToTitle(slug);
+                
+                // Try to get title with year from data attributes or parent
+                const parent = $(element).closest('[data-item-name], [data-film-slug]');
+                const dataItemName = parent.attr('data-item-name') || '';
+                const altText = img.attr('alt') || '';
+                
+                let letterboxdYear = null;
+                let filmName = '';
+                
+                const nameWithYear = dataItemName || altText;
+                const yearMatch = nameWithYear.match(/\((\d{4})\)\s*$/);
+                
+                if (yearMatch) {
+                    letterboxdYear = parseInt(yearMatch[1], 10);
+                    filmName = nameWithYear.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+                    console.log(`[SCRAPER] Method 3 - Extracted year ${letterboxdYear} from "${nameWithYear}"`);
+                } else {
+                    filmName = $(element).attr('title') || formatSlugToTitle(slug);
+                }
                 
                 // Skip duplicates and non-movie links
                 if (slug && slug !== 'more' && !slug.includes('/') && !top4Movies.some(m => m.slug === slug)) {
-                    console.log(`[SCRAPER] Method 3 - Found: "${filmName}" slug: "${slug}"`);
+                    console.log(`[SCRAPER] Method 3 - Found: "${filmName}" (${letterboxdYear || 'no year'}) slug: "${slug}"`);
                     top4Movies.push({
                         slug: slug,
                         title: filmName,
+                        letterboxdYear: letterboxdYear,
                         letterboxdUrl: `https://letterboxd.com/film/${slug}/`
                     });
                 }
@@ -420,29 +479,74 @@ async function scrapeMovieDetails(slug) {
         const url = `https://letterboxd.com/film/${slug}/`;
         console.log(`[SCRAPER] Fetching Letterboxd data for: ${slug}`);
         
+        // Add a small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
         const response = await axios.get(url, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1'
             },
-            timeout: 10000
+            timeout: 15000
         });
 
         const $ = cheerio.load(response.data);
         
         // Extract movie title
         const title = $('h1.headline-1').text().trim() || 
-                      $('meta[property="og:title"]').attr('content')?.split(' (')[0] ||
+                      $('meta[property="og:title"]').attr('content')?.split(' (')[0]?.trim() ||
                       formatSlugToTitle(slug);
         
-        // Get year
-        let year = parseInt($('.releaseyear a').text()) || 
-                   parseInt($('small.number a').text());
+        // Get year - MULTIPLE METHODS for robustness
+        let year = 0;
+        
+        // Method 1: releaseyear class
+        year = parseInt($('.releaseyear a').text()) || 0;
+        
+        // Method 2: small.number
+        if (!year) {
+            year = parseInt($('small.number a').text()) || 0;
+        }
+        
+        // Method 3: From og:title meta tag "Movie Title (YYYY)"
         if (!year) {
             const ogTitle = $('meta[property="og:title"]').attr('content');
             const yearMatch = ogTitle?.match(/\((\d{4})\)/);
             year = yearMatch ? parseInt(yearMatch[1]) : 0;
         }
+        
+        // Method 4: From URL/slug if contains year (e.g., "cure-1997")
+        if (!year) {
+            const slugYearMatch = slug.match(/-(\d{4})$/);
+            year = slugYearMatch ? parseInt(slugYearMatch[1]) : 0;
+        }
+        
+        // Method 5: Look in the sidebar release info
+        if (!year) {
+            const releaseText = $('a[href*="/films/year/"]').first().text();
+            year = parseInt(releaseText) || 0;
+        }
+        
+        // Method 6: From page title
+        if (!year) {
+            const pageTitle = $('title').text();
+            const titleYearMatch = pageTitle?.match(/\((\d{4})\)/);
+            year = titleYearMatch ? parseInt(titleYearMatch[1]) : 0;
+        }
+        
+        console.log(`[SCRAPER] Extracted: "${title}" (${year || 'NO YEAR'})`);
         
         // Get director(s)
         const directors = [];
@@ -522,10 +626,19 @@ async function scrapeMovieDetails(slug) {
         };
     } catch (error) {
         console.error(`[SCRAPER] Error scraping movie ${slug}:`, error.message);
+        
+        // Try to extract year from slug (e.g., "cure-1997", "godzilla-1954")
+        let yearFromSlug = 0;
+        const slugYearMatch = slug.match(/-(\d{4})$/);
+        if (slugYearMatch) {
+            yearFromSlug = parseInt(slugYearMatch[1]);
+            console.log(`[SCRAPER] Extracted year ${yearFromSlug} from slug: ${slug}`);
+        }
+        
         return {
             slug,
             title: formatSlugToTitle(slug),
-            year: 0,
+            year: yearFromSlug,
             directors: [],
             genres: [],
             letterboxdRating: null,

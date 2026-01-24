@@ -266,6 +266,7 @@ function calculateTitleSimilarity(title1, title2) {
 
 // =====================================================
 // HELPER: Search TMDB - EXACT TITLE + YEAR matching
+// THIS IS CRITICAL - YEAR FROM LETTERBOXD IS ALWAYS CORRECT!
 // =====================================================
 async function searchMovieByTitle(title, year = null) {
     try {
@@ -277,120 +278,145 @@ async function searchMovieByTitle(title, year = null) {
 
         const cleanTitle = title.replace(/['']/g, "'").trim();
         console.log(`[TMDB] ========================================`);
-        console.log(`[TMDB] Searching: "${cleanTitle}" | YEAR: ${year || 'unknown'}`);
+        console.log(`[TMDB] Searching: "${cleanTitle}" | REQUIRED YEAR: ${year || 'unknown'}`);
         
-        // ALWAYS search without year first to get ALL results
-        const url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(cleanTitle)}&language=en-US`;
-        const response = await axios.get(url, { timeout: 10000 });
-        const results = response.data.results || [];
+        // Collect all results from multiple search strategies
+        let allResults = [];
+        
+        // STRATEGY 1: Basic search
+        const url1 = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(cleanTitle)}&language=en-US&include_adult=false`;
+        const response1 = await axios.get(url1, { timeout: 10000 });
+        allResults = allResults.concat(response1.data.results || []);
+        
+        // STRATEGY 2: If year provided, search with year in query (helps for same-title films)
+        if (year && year > 1800) {
+            const url2 = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(cleanTitle)}&year=${year}&language=en-US`;
+            try {
+                const response2 = await axios.get(url2, { timeout: 10000 });
+                allResults = allResults.concat(response2.data.results || []);
+            } catch (e) {}
+            
+            // STRATEGY 3: Use primary_release_year (more accurate for some films)
+            const url3 = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(cleanTitle)}&primary_release_year=${year}&language=en-US`;
+            try {
+                const response3 = await axios.get(url3, { timeout: 10000 });
+                allResults = allResults.concat(response3.data.results || []);
+            } catch (e) {}
+        }
+        
+        // STRATEGY 4: Search in original language (for foreign films)
+        // Japanese, Korean, French, etc. films often have different English titles
+        const url4 = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(cleanTitle)}&language=ja-JP`;
+        try {
+            const response4 = await axios.get(url4, { timeout: 10000 });
+            allResults = allResults.concat(response4.data.results || []);
+        } catch (e) {}
+        
+        // De-duplicate results by ID
+        const seenIds = new Set();
+        const results = allResults.filter(m => {
+            if (seenIds.has(m.id)) return false;
+            seenIds.add(m.id);
+            return true;
+        });
         
         if (results.length === 0) {
             console.log(`[TMDB] No results found for "${cleanTitle}"`);
             return null;
         }
         
-        console.log(`[TMDB] Found ${results.length} results`);
+        console.log(`[TMDB] Found ${results.length} unique results (from ${allResults.length} total)`);
         
-        // Log first few results for debugging
-        results.slice(0, 5).forEach((m, i) => {
+        // Log results for debugging
+        results.slice(0, 10).forEach((m, i) => {
             const y = m.release_date ? m.release_date.substring(0, 4) : 'N/A';
             console.log(`[TMDB]   ${i+1}. "${m.title}" (${y}) [original: "${m.original_title}"]`);
         });
         
-        // If we have a year, YEAR MATCHING IS THE PRIORITY
+        // =====================================================
+        // MATCHING PRIORITY - YEAR IS KING!
+        // Letterboxd year is ALWAYS correct, we MUST respect it
+        // =====================================================
+        
         if (year && year > 1800) {
-            // STEP 1: Find EXACT title + exact year match (BEST)
+            
+            // PRIORITY 1: EXACT year + EXACT title (PERFECT MATCH)
             for (const movie of results) {
                 const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
                 if (movieYear === year) {
-                    const titleOK = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
-                    if (titleOK) {
-                        console.log(`[TMDB] ✅ PERFECT: "${movie.title}" (${movieYear}) - exact title + year`);
+                    const exactTitle = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
+                    if (exactTitle) {
+                        console.log(`[TMDB] ✅ PERFECT MATCH: "${movie.title}" (${movieYear})`);
                         return movie.id;
                     }
                 }
             }
             
-            // STEP 2: Find EXACT title + close year (±1 year - regional release differences)
-            for (const movie of results) {
-                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
-                if (Math.abs(movieYear - year) <= 1) {
-                    const titleOK = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
-                    if (titleOK) {
-                        console.log(`[TMDB] ✅ CLOSE: "${movie.title}" (${movieYear}) - exact title, year ±1`);
-                        return movie.id;
-                    }
-                }
-            }
-            
-            // STEP 3: Find exact year + HIGH title similarity (for different translations)
+            // PRIORITY 2: EXACT year + similar title (translations, punctuation differences)
             for (const movie of results) {
                 const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
                 if (movieYear === year) {
-                    const similarity = Math.max(
-                        calculateTitleSimilarity(cleanTitle, movie.title),
-                        calculateTitleSimilarity(cleanTitle, movie.original_title)
-                    );
-                    if (similarity >= 70) {
-                        console.log(`[TMDB] ✅ YEAR + SIMILAR TITLE: "${movie.title}" (${movieYear}) - similarity: ${similarity}%`);
+                    const sim1 = calculateTitleSimilarity(cleanTitle, movie.title);
+                    const sim2 = calculateTitleSimilarity(cleanTitle, movie.original_title);
+                    if (sim1 >= 50 || sim2 >= 50) {
+                        console.log(`[TMDB] ✅ YEAR MATCH + SIMILAR TITLE: "${movie.title}" (${movieYear}) [sim: ${Math.max(sim1,sim2)}%]`);
                         return movie.id;
                     }
                 }
             }
             
-            // STEP 4: Find exact year even with low similarity (year from Letterboxd is trusted)
-            // But ONLY if the search title words appear in the result
+            // PRIORITY 3: EXACT year (even if title doesn't match - trust the year!)
+            // This handles cases where TMDB has a different English title
             for (const movie of results) {
                 const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
                 if (movieYear === year) {
-                    // Check that at least the main words match
-                    const searchWords = normalizeTitle(cleanTitle).split(' ').filter(w => w.length > 2);
-                    const resultTitle = normalizeTitle(movie.title + ' ' + movie.original_title);
-                    const matchingWords = searchWords.filter(w => resultTitle.includes(w));
-                    
-                    // At least half the search words should appear
-                    if (matchingWords.length >= Math.ceil(searchWords.length / 2)) {
-                        console.log(`[TMDB] ⚠️ YEAR MATCH: "${movie.title}" (${movieYear}) - ${matchingWords.length}/${searchWords.length} words match`);
+                    console.log(`[TMDB] ✅ EXACT YEAR: "${movie.title}" (${movieYear}) - trusting Letterboxd year!`);
+                    return movie.id;
+                }
+            }
+            
+            // PRIORITY 4: Year ±1 + exact title (regional release date differences)
+            for (const movie of results) {
+                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
+                if (Math.abs(movieYear - year) === 1) {
+                    const exactTitle = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
+                    if (exactTitle) {
+                        console.log(`[TMDB] ✅ CLOSE YEAR (±1): "${movie.title}" (${movieYear})`);
                         return movie.id;
                     }
                 }
             }
             
-            // STEP 5: NO MATCH - don't return wrong movie!
-            const firstResult = results[0];
-            const firstYear = firstResult.release_date ? parseInt(firstResult.release_date.substring(0, 4)) : 0;
-            console.log(`[TMDB] ❌ NO MATCH! Wanted "${cleanTitle}" (${year})`);
-            console.log(`[TMDB] ❌ Best result: "${firstResult.title}" (${firstYear}) - REJECTED`);
+            // =====================================================
+            // NO MATCH FOUND WITH CORRECT YEAR!
+            // DO NOT return a wrong-year movie. Better to return null.
+            // =====================================================
+            console.log(`[TMDB] ❌ NO MATCH for "${cleanTitle}" (${year})`);
             
-            // Return null - better to show fallback data than wrong movie!
-            return null;
-        }
-        
-        // No year provided - ONLY return if title matches exactly
-        for (const movie of results) {
-            const titleOK = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
-            if (titleOK) {
-                const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
-                console.log(`[TMDB] ✅ Title match (no year): "${movie.title}" (${movieYear})`);
-                return movie.id;
-            }
-        }
-        
-        // Check for high similarity as fallback
-        for (const movie of results) {
-            const similarity = Math.max(
-                calculateTitleSimilarity(cleanTitle, movie.title),
-                calculateTitleSimilarity(cleanTitle, movie.original_title)
+            // Log what we would have matched (for debugging)
+            const titleMatches = results.filter(m => 
+                titlesMatch(cleanTitle, m.title) || titlesMatch(cleanTitle, m.original_title)
             );
-            if (similarity >= 80) {
+            if (titleMatches.length > 0) {
+                const wrongYear = titleMatches[0];
+                const wrongYearNum = wrongYear.release_date ? parseInt(wrongYear.release_date.substring(0, 4)) : 0;
+                console.log(`[TMDB] ❌ REJECTED: "${wrongYear.title}" (${wrongYearNum}) - wanted ${year}, got ${wrongYearNum}`);
+            }
+            
+            return null; // DO NOT RETURN WRONG MOVIE!
+        }
+        
+        // No year provided - match by title only (risky, but unavoidable)
+        for (const movie of results) {
+            const exactTitle = titlesMatch(cleanTitle, movie.title) || titlesMatch(cleanTitle, movie.original_title);
+            if (exactTitle) {
                 const movieYear = movie.release_date ? parseInt(movie.release_date.substring(0, 4)) : 0;
-                console.log(`[TMDB] ⚠️ High similarity (${similarity}%): "${movie.title}" (${movieYear})`);
+                console.log(`[TMDB] ⚠️ Title match (no year): "${movie.title}" (${movieYear})`);
                 return movie.id;
             }
         }
         
-        // NO fallback to first result anymore - that causes wrong matches
-        console.log(`[TMDB] ❌ No title match found for "${cleanTitle}" - rejecting all results`);
+        console.log(`[TMDB] ❌ No match for "${cleanTitle}"`);
         return null;
         
     } catch (error) {
