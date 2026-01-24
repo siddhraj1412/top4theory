@@ -239,9 +239,14 @@ function displayFullProfileAnalysis(data) {
     const tierInsight = getTierInsight(data.level, data.score, analysis, movies);
     html += `
         <div class="analysis-category">
-            <div class="analysis-category-title">🏆 ${data.tierName}</div>
+            <div class="analysis-category-title">${data.tierIcon} ${data.tierName}</div>
             <div class="analysis-category-content">
-                <div class="insight-badge tier-badge" style="background: ${data.tierColor};">Level ${data.level}</div>
+                <div class="tier-badge-container">
+                    <div class="insight-badge tier-badge" style="background: ${data.tierColor}; border-color: ${data.tierColor};">
+                        <span class="tier-emoji">${data.tierIcon}</span>
+                        <span class="tier-level-text">Level ${data.level}</span>
+                    </div>
+                </div>
                 <div class="insight-explanation">
                     <p><strong>Why this tier?</strong></p>
                     <p>${tierInsight.mainReason}</p>
