@@ -24,17 +24,93 @@ const TIERS = {
 // FAMOUS DIRECTORS DATABASE (for Auteur Detection)
 // =====================================================
 const AUTEUR_DIRECTORS = new Set([
+    // Western/Hollywood auteurs
     'stanley kubrick', 'alfred hitchcock', 'martin scorsese', 'quentin tarantino',
     'christopher nolan', 'david lynch', 'wes anderson', 'paul thomas anderson',
     'denis villeneuve', 'coen brothers', 'david fincher', 'ridley scott',
-    'francis ford coppola', 'steven spielberg', 'akira kurosawa', 'ingmar bergman',
-    'andrei tarkovsky', 'federico fellini', 'wong kar-wai', 'terrence malick',
-    'sofia coppola', 'darren aronofsky', 'guillermo del toro', 'bong joon-ho',
-    'park chan-wook', 'hayao miyazaki', 'charlie kaufman', 'spike jonze',
-    'alfonso cuarón', 'alejandro gonzález iñárritu', 'lars von trier', 'michael haneke',
-    'jean-luc godard', 'orson welles', 'billy wilder', 'fritz lang', 'f.w. murnau',
-    'john ford', 'sergio leone', 'greta gerwig', 'ari aster', 'robert eggers',
-    'yorgos lanthimos', 'gaspar noé', 'nicolas winding refn', 'joel coen', 'ethan coen'
+    'francis ford coppola', 'steven spielberg', 'terrence malick',
+    'sofia coppola', 'darren aronofsky', 'charlie kaufman', 'spike jonze',
+    'orson welles', 'billy wilder', 'john ford', 'greta gerwig', 'ari aster', 
+    'robert eggers', 'gaspar noé', 'nicolas winding refn', 'joel coen', 'ethan coen',
+    'spike lee', 'woody allen', 'clint eastwood', 'michael mann', 'oliver stone',
+    'james cameron', 'tim burton', 'sam raimi', 'john carpenter', 'george miller',
+    
+    // Additional Hollywood masters (reported missing by users)
+    'brian de palma', 'richard linklater', 'sylvester stallone', 'william friedkin',
+    'sidney lumet', 'kathryn bigelow', 'michael curtiz', 'howard hawks', 'ernst lubitsch',
+    'frank capra', 'john huston', 'elia kazan', 'robert altman', 'mike nichols',
+    'hal ashby', 'arthur penn', 'sam peckinpah', 'bob fosse', 'milos forman',
+    'sydney pollack', 'peter bogdanovich', 'walter hill', 'john mctiernan',
+    'tony scott', 'paul verhoeven', 'david lean', 'carol reed', 'powell and pressburger',
+    'michael powell', 'emeric pressburger', 'barry levinson', 'ron howard',
+    'rob reiner', 'ivan reitman', 'john landis', 'joe dante', 'robert zemeckis',
+    'james wan', 'jordan peele', 'barry jenkins', 'damien chazelle', 'ryan coogler',
+    'chloe zhao', 'sean baker', 'safdie brothers', 'josh safdie', 'benny safdie',
+    'kelly reichardt', 'lynne ramsay', 'debra granik', 'andrea arnold',
+    'todd haynes', 'todd phillips', 'adam mckay', 'david o. russell', 'james gray',
+    'bennett miller', 'derek cianfrance', 'jeff nichols', 'david gordon green',
+    
+    // Japanese auteurs
+    'akira kurosawa', 'hayao miyazaki', 'yasujirō ozu', 'kenji mizoguchi', 'isao takahata',
+    'hirokazu kore-eda', 'takeshi kitano', 'satoshi kon', 'mamoru hosoda', 'makoto shinkai',
+    'kiyoshi kurosawa', 'shinya tsukamoto', 'takashi miike', 'sion sono', 'masaki kobayashi',
+    'seijun suzuki', 'nagisa oshima', 'shohei imamura', 'mikio naruse', 'kon ichikawa',
+    'mamoru oshii', 'hideaki anno', 'naoko yamada', 'ryusuke hamaguchi',
+    
+    // Korean auteurs
+    'bong joon-ho', 'park chan-wook', 'kim ki-duk', 'lee chang-dong', 'hong sang-soo',
+    'kim jee-woon', 'na hong-jin', 'yeon sang-ho', 'im kwon-taek',
+    
+    // Chinese/Hong Kong/Taiwan auteurs
+    'wong kar-wai', 'zhang yimou', 'chen kaige', 'ang lee', 'hou hsiao-hsien',
+    'edward yang', 'tsai ming-liang', 'jia zhangke', 'john woo', 'johnnie to',
+    'stephen chow', 'king hu', 'bi gan', 'lou ye',
+    
+    // Indian auteurs
+    'satyajit ray', 'ritwik ghatak', 'guru dutt', 'raj kapoor', 'bimal roy',
+    'mani ratnam', 'adoor gopalakrishnan', 'shyam benegal', 'mrinal sen',
+    'anurag kashyap', 'vishal bhardwaj', 's.s. rajamouli', 'sanjay leela bhansali',
+    'vetrimaaran', 'lokesh kanagaraj', 'pa. ranjith', 'lijo jose pellissery',
+    'asghar farhadi', 'majid majidi', 'abbas kiarostami', 'jafar panahi', 'mohsen makhmalbaf',
+    
+    // European auteurs
+    'ingmar bergman', 'andrei tarkovsky', 'federico fellini', 'lars von trier', 'michael haneke',
+    'jean-luc godard', 'fritz lang', 'f.w. murnau', 'sergio leone', 'yorgos lanthimos',
+    'françois truffaut', 'agnès varda', 'jean renoir', 'robert bresson', 'jacques tati',
+    'jacques demy', 'jean-pierre melville', 'claude chabrol', 'eric rohmer', 'alain resnais',
+    'louis malle', 'leos carax', 'claire denis', 'olivier assayas', 'arnaud desplechin',
+    'jacques audiard', 'céline sciamma', 'julia ducournau', 'mathieu kassovitz',
+    'jean-jacques beineix', 'luc besson', 'patrice leconte', 'bertrand tavernier',
+    'krzysztof kieślowski', 'andrzej wajda', 'roman polanski', 'pawel pawlikowski',
+    'agnieszka holland', 'jerzy skolimowski',
+    'pedro almodóvar', 'luis buñuel', 'carlos saura', 'victor erice',
+    'julio medem', 'alejandro amenábar', 'j.a. bayona', 'rodrigo sorogoyen',
+    'rainer werner fassbinder', 'werner herzog', 'wim wenders', 'florian henckel von donnersmarck',
+    'wolfgang petersen', 'tom tykwer', 'fatih akin', 'christian petzold', 'maren ade',
+    'béla tarr', 'elem klimov', 'sergei eisenstein', 'dziga vertov', 'aleksei german',
+    'andrei zvyagintsev', 'alexander sokurov', 'nikita mikhalkov', 'alexey balabanov',
+    'pier paolo pasolini', 'luchino visconti', 'vittorio de sica', 'michelangelo antonioni',
+    'roberto rossellini', 'bernardo bertolucci', 'ermanno olmi', 'marco bellocchio',
+    'matteo garrone', 'luca guadagnino', 'sorrentino paolo', 'nanni moretti',
+    'dario argento', 'mario bava', 'paolo sorrentino', 'lucio fulci', 'giallo',
+    'carl theodor dreyer', 'thomas vinterberg', 'roy andersson', 'ruben östlund',
+    'nicolas winding refn', 'susanne bier',
+    'theo angelopoulos', 'nuri bilge ceylan', 'semih kaplanoğlu',
+    'aki kaurismäki', 'mika kaurismäki',
+    'michael winterbottom', 'danny boyle', 'edgar wright', 'guy ritchie', 'matthew vaughn',
+    'ken loach', 'mike leigh', 'stephen frears', 'terence davies', 'peter greenaway',
+    'nicolas roeg', 'alan parker', 'terry gilliam', 'ridley scott', 'tony scott',
+    'christopher smith', 'ben wheatley', 'jonathan glazer', 'steve mcqueen',
+    
+    // Latin American auteurs
+    'guillermo del toro', 'alfonso cuarón', 'alejandro gonzález iñárritu',
+    'fernando meirelles', 'walter salles', 'glauber rocha', 'kleber mendonça filho',
+    'lucrecia martel', 'pablo larraín', 'alejandro jodorowsky',
+    
+    // Other international auteurs
+    'denis villeneuve', 'david cronenberg', 'xavier dolan', 'atom egoyan',
+    'jane campion', 'peter weir', 'george miller', 'taika waititi',
+    'apichatpong weerasethakul', 'pen-ek ratanaruang', 'lav diaz', 'brillante mendoza'
 ]);
 
 // =====================================================
@@ -588,9 +664,9 @@ function calculateRank(movies) {
     score += rarityScore;
     scoreBreakdown.rarity = rarityScore;
     if (avgRarity >= 35) {
-        reasons.push("Deep cuts - you dig beyond the surface");
+        reasons.push("Includes lesser-known gems");
     } else if (avgRarity >= 20) {
-        reasons.push("Nice mix of popular and lesser-known films");
+        reasons.push("Mix of popular and lesser-known films");
     }
 
     // ----- 4. ERA SPREAD (Max 20 points) -----
@@ -600,9 +676,9 @@ function calculateRank(movies) {
     score += eraScore;
     scoreBreakdown.era = eraScore;
     if (analysis.yearSpread >= 50) {
-        reasons.push(`Time traveler: spans ${analysis.yearSpread} years of cinema`);
+        reasons.push(`Wide era range: ${analysis.yearSpread} years of cinema`);
     } else if (analysis.yearSpread >= 25) {
-        reasons.push(`Decent range: ${analysis.yearSpread} year spread`);
+        reasons.push(`Good era range: ${analysis.yearSpread} year spread`);
     }
 
     // ----- 5. CINEPHILE TRAITS (Max 20 points) -----
@@ -611,20 +687,22 @@ function calculateRank(movies) {
     // Foreign films (5 pts)
     if (analysis.hasForeign) {
         traitScore += 5;
-        reasons.push("Subtitles don't scare you");
+        reasons.push("International cinema represented 🌍");
     }
     
     // Classic cinema pre-1970 (5 pts)
     if (analysis.hasPreWar) {
         traitScore += 5;
-        reasons.push("Respects the classics");
+        reasons.push("Classic cinema included 🎞️");
     }
     
-    // Auteur directors (5 pts max)
+    // Famous directors (5 pts max)
     const auteurScore = Math.min(5, analysis.auteurCount * 1.5);
     traitScore += auteurScore;
     if (analysis.auteurCount >= 2) {
-        reasons.push(`Auteur appreciation: ${analysis.auteurCount} master directors`);
+        reasons.push(`Great directors: ${analysis.auteurCount} renowned filmmakers`);
+    } else if (analysis.auteurCount === 1) {
+        reasons.push(`Features a renowned director`);
     }
     
     // Modern classics post-2000 with high rating (5 pts)
@@ -642,7 +720,7 @@ function calculateRank(movies) {
     if (analysis.franchiseCount >= 3) {
         penalty = 12;
         score -= penalty;
-        reasons.push("Franchise heavy - branch out!");
+        reasons.push("Multiple franchise films detected");
     } else if (analysis.franchiseCount >= 2) {
         penalty = 6;
         score -= penalty;
@@ -694,6 +772,17 @@ function calculateRank(movies) {
     // Convert TMDB 10-point scale to Letterboxd 5-star scale
     const letterboxdRating = (analysis.avgRating / 2).toFixed(1);
     
+    // Calculate average year gap between films (more meaningful than total span)
+    let avgYearGap = 0;
+    if (validMovies.length > 1) {
+        const years = validMovies.map(m => m.release_year || 2000).sort((a, b) => a - b);
+        let totalGap = 0;
+        for (let i = 1; i < years.length; i++) {
+            totalGap += years[i] - years[i - 1];
+        }
+        avgYearGap = Math.round(totalGap / (years.length - 1));
+    }
+    
     return {
         level,
         tierName: tierInfo.name,
@@ -706,6 +795,7 @@ function calculateRank(movies) {
         analysis: {
             genreCount: analysis.genreCount,
             yearSpread: analysis.yearSpread,
+            avgYearGap: avgYearGap,
             oldestFilm: analysis.oldestYear,
             newestFilm: analysis.newestYear,
             avgRarity: Math.round(avgRarity),

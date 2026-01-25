@@ -1,10 +1,178 @@
-async function fetchRank() {
-    const username = document.getElementById('username').value.trim();
-    if (!username) {
-        showError("Please enter a Letterboxd username");
+// =====================================================
+// MOVIE SELECTION STATE
+// =====================================================
+const selectedMovies = {
+    1: null,
+    2: null,
+    3: null,
+    4: null
+};
+
+let searchTimeout = null;
+let activeSlot = null;
+
+// =====================================================
+// SEARCH MODAL FUNCTIONS
+// =====================================================
+function openSearch(slotNum) {
+    // Don't open if already has a movie
+    if (selectedMovies[slotNum]) {
         return;
     }
+    
+    activeSlot = slotNum;
+    
+    const overlay = document.getElementById('searchOverlay');
+    const modal = document.getElementById('searchModal');
+    const input = document.getElementById('movieSearchInput');
+    const results = document.getElementById('searchResults');
+    
+    // Clear previous search
+    input.value = '';
+    results.innerHTML = '';
+    
+    // Show modal
+    overlay.classList.add('active');
+    modal.classList.add('active');
+    
+    // Focus input
+    setTimeout(() => input.focus(), 100);
+}
 
+function closeSearch() {
+    const overlay = document.getElementById('searchOverlay');
+    const modal = document.getElementById('searchModal');
+    
+    overlay.classList.remove('active');
+    modal.classList.remove('active');
+    activeSlot = null;
+}
+
+// =====================================================
+// SEARCH INPUT HANDLER
+// =====================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('movieSearchInput');
+    
+    input.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        const query = e.target.value.trim();
+        
+        const resultsContainer = document.getElementById('searchResults');
+        
+        if (query.length < 2) {
+            resultsContainer.innerHTML = '';
+            return;
+        }
+        
+        resultsContainer.innerHTML = '<div class="search-loading">🔍 Searching...</div>';
+        
+        // Debounce search
+        searchTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const movies = await res.json();
+                
+                if (movies.length === 0) {
+                    resultsContainer.innerHTML = '<div class="no-results">No movies found. Try a different search.</div>';
+                    return;
+                }
+                
+                resultsContainer.innerHTML = movies.slice(0, 8).map(movie => `
+                    <div class="search-result-item" onclick='selectMovieFromSearch(${JSON.stringify(movie).replace(/'/g, "&#39;")})'>
+                        <img class="result-poster" src="${movie.poster || 'https://via.placeholder.com/50x75?text=No+Poster'}" alt="${movie.title}" onerror="this.src='https://via.placeholder.com/50x75?text=No+Poster'">
+                        <div class="result-info">
+                            <div class="result-title">${movie.title}</div>
+                            <div class="result-year">${movie.year || 'Year unknown'}${movie.director ? ' • Directed by ' + movie.director : ''}</div>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                resultsContainer.innerHTML = '<div class="search-error">Search failed. Please try again.</div>';
+            }
+        }, 300);
+    });
+    
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeSearch();
+        }
+    });
+});
+
+// =====================================================
+// MOVIE SELECTION
+// =====================================================
+function selectMovieFromSearch(movie) {
+    if (!activeSlot) return;
+    
+    // Check if movie is already selected in another slot
+    for (let i = 1; i <= 4; i++) {
+        if (selectedMovies[i] && selectedMovies[i].id === movie.id) {
+            alert(`"${movie.title}" is already in slot ${i}`);
+            return;
+        }
+    }
+    
+    selectedMovies[activeSlot] = movie;
+    
+    const slot = document.getElementById(`slot-${activeSlot}`);
+    slot.classList.remove('empty');
+    slot.classList.add('filled');
+    
+    // Hide empty state, show selected movie
+    const emptyState = slot.querySelector('.empty-state');
+    const selectedDisplay = slot.querySelector('.selected-movie');
+    
+    emptyState.style.display = 'none';
+    
+    // Show selected movie
+    selectedDisplay.style.display = 'flex';
+    selectedDisplay.querySelector('.selected-poster').src = movie.poster || 'https://via.placeholder.com/60x90?text=No+Poster';
+    selectedDisplay.querySelector('.selected-title').textContent = movie.title;
+    selectedDisplay.querySelector('.selected-year').textContent = movie.year || '';
+    
+    // Close search modal
+    closeSearch();
+    
+    updateCounter();
+}
+
+function removeMovie(slotNum) {
+    selectedMovies[slotNum] = null;
+    
+    const slot = document.getElementById(`slot-${slotNum}`);
+    slot.classList.add('empty');
+    slot.classList.remove('filled');
+    
+    const emptyState = slot.querySelector('.empty-state');
+    const selectedDisplay = slot.querySelector('.selected-movie');
+    
+    emptyState.style.display = '';
+    selectedDisplay.style.display = 'none';
+    
+    updateCounter();
+}
+
+function updateCounter() {
+    const count = Object.values(selectedMovies).filter(m => m !== null).length;
+    document.getElementById('selectedCount').textContent = count;
+    document.getElementById('analyzeBtn').disabled = count < 4;
+}
+
+// =====================================================
+// ANALYZE TOP 4
+// =====================================================
+async function analyzeTop4() {
+    const movies = Object.values(selectedMovies).filter(m => m !== null);
+    
+    if (movies.length < 4) {
+        showError("Please select 4 movies");
+        return;
+    }
+    
     // Show loading state
     const btn = document.getElementById('analyzeBtn');
     const btnText = btn.querySelector('.btn-text');
@@ -16,18 +184,24 @@ async function fetchRank() {
     
     hideError();
     document.getElementById('result').classList.add('hidden');
-
+    
     try {
-        const res = await fetch(`/api/rank/${encodeURIComponent(username)}`);
+        const movieIds = movies.map(m => m.id);
+        
+        const res = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ movieIds })
+        });
+        
         const data = await res.json();
-
+        
         if (!res.ok) {
-            throw new Error(data.message || data.error || "Failed to analyze profile");
+            throw new Error(data.message || data.error || "Failed to analyze movies");
         }
-
-        // Display results
+        
         displayResults(data);
-
+        
     } catch (error) {
         showError(error.message);
     } finally {
@@ -37,10 +211,10 @@ async function fetchRank() {
     }
 }
 
+// =====================================================
+// DISPLAY RESULTS
+// =====================================================
 function displayResults(data) {
-    // Set username
-    document.getElementById('displayUser').innerText = data.username;
-    
     // Set tier info
     document.getElementById('levelVal').innerText = data.level;
     document.getElementById('tierName').innerText = data.tierName;
@@ -50,7 +224,7 @@ function displayResults(data) {
     // Set scores
     document.getElementById('scoreVal').innerText = data.score;
     
-    // Display average rating as Letterboxd-style stars
+    // Display average rating as stars
     const avgRatingNum = parseFloat(data.avgRating) || 0;
     document.getElementById('avgRating').innerText = getStarDisplay(avgRatingNum) + ` (${data.avgRating})`;
     
@@ -64,7 +238,7 @@ function displayResults(data) {
     tierBadge.style.boxShadow = `0 0 40px ${data.tierColor}40`;
     
     document.getElementById('tierName').style.color = data.tierColor;
-
+    
     // Display analysis grid
     const analysisGrid = document.getElementById('analysisGrid');
     analysisGrid.innerHTML = '';
@@ -72,11 +246,11 @@ function displayResults(data) {
     if (data.analysis) {
         const analysisItems = [
             { label: 'Genres', value: data.analysis.genreCount || 0 },
-            { label: 'Year Span', value: data.analysis.yearSpread || 0 },
+            { label: 'Avg Year Gap', value: (data.analysis.avgYearGap || 0) + ' yrs', tooltip: 'Average years between your films' },
             { label: 'Oldest Film', value: data.analysis.oldestFilm || 'N/A' },
             { label: 'Newest Film', value: data.analysis.newestFilm || 'N/A' },
             { label: 'Rarity Avg', value: data.analysis.avgRarity || 0 },
-            { label: 'Famous Directors', value: data.analysis.auteurCount || 0, tooltip: 'Films by renowned directors like Kubrick, Scorsese, Tarantino, etc.' }
+            { label: 'Famous Directors', value: data.analysis.auteurCount || 0, tooltip: 'Films by well-known directors' }
         ];
         
         analysisItems.forEach(item => {
@@ -94,21 +268,14 @@ function displayResults(data) {
         });
         
         // Add special badges
-        if (data.analysis.hasForeign) {
-            addAnalysisItem(analysisGrid, '🌍', 'Foreign Film');
-        }
-        if (data.analysis.hasClassic) {
-            addAnalysisItem(analysisGrid, '📜', 'Pre-1970 Classic');
-        }
-        if (data.analysis.hasSilentOrBW) {
-            addAnalysisItem(analysisGrid, '🎬', 'Silent/B&W Era');
-        }
+        if (data.analysis.hasForeign) addAnalysisItem(analysisGrid, '🌍', 'Foreign Film');
+        if (data.analysis.hasClassic) addAnalysisItem(analysisGrid, '🎞️', 'Classic Era');
+        if (data.analysis.hasSilentOrBW) addAnalysisItem(analysisGrid, '⬛', 'B&W/Silent');
     }
-
+    
     // Display reasons
     const reasonsList = document.getElementById('reasonsList');
     reasonsList.innerHTML = '';
-    
     if (data.reasons && data.reasons.length > 0) {
         data.reasons.forEach(reason => {
             const li = document.createElement('li');
@@ -116,600 +283,266 @@ function displayResults(data) {
             reasonsList.appendChild(li);
         });
     }
-
-    // Display movies
+    
+    // Display movies with clickable titles
     const movieGrid = document.getElementById('movieGrid');
     movieGrid.innerHTML = '';
-    
     if (data.movies && data.movies.length > 0) {
         data.movies.forEach(movie => {
-            const div = document.createElement('div');
-            div.className = 'movie-card';
+            const movieCard = document.createElement('div');
+            movieCard.className = 'movie-card';
+            const posterUrl = movie.poster_path || 'https://via.placeholder.com/200x300?text=No+Poster';
+            // Create Letterboxd URL from movie title and year
+            const letterboxdSlug = movie.title.toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-');
+            const letterboxdUrl = `https://letterboxd.com/film/${letterboxdSlug}/`;
             
-            const posterContent = movie.poster_path
-                ? `<div class="poster" style="background-image: url('${movie.poster_path}')"></div>`
-                : `<div class="poster"><div class="poster-placeholder">🎬</div></div>`;
-            
-            const badges = [];
-            if (movie.is_foreign) badges.push('<span class="badge badge-foreign">Foreign</span>');
-            if (movie.release_year < 1970) badges.push('<span class="badge badge-classic">Classic</span>');
-            if (movie.rarity_score >= 50 && parseFloat(movie.rating) >= 7.5) badges.push('<span class="badge badge-rare">Hidden Gem</span>');
-            
-            const genres = Array.isArray(movie.genres) ? movie.genres.slice(0, 3).join(', ') : '';
-            const directors = Array.isArray(movie.directors) ? movie.directors.slice(0, 2).join(', ') : '';
-            
-            // Only show rating if official Letterboxd rating is available
-            let ratingDisplay = '';
-            if (movie.letterboxd_rating) {
-                const starRating = parseFloat(movie.letterboxd_rating);
-                ratingDisplay = `<span class="movie-rating" title="Letterboxd Rating">${starRating.toFixed(1)}</span>`;
-            }
-            
-            // Make movie card clickable to Letterboxd
-            const movieUrl = movie.letterboxd_url || '#';
-            
-            div.innerHTML = `
-                <a href="${movieUrl}" target="_blank" rel="noopener" class="movie-link">
+            movieCard.innerHTML = `
+                <a href="${letterboxdUrl}" target="_blank" class="poster-link">
                     <div class="poster-container">
-                        ${posterContent}
-                        <div class="movie-badges">${badges.join('')}</div>
-                    </div>
-                    <div class="movie-info">
-                        <div class="movie-title">${movie.title}</div>
-                        <div class="movie-meta">
-                            <span class="movie-year">${movie.release_year}</span>
-                            ${ratingDisplay}
-                        </div>
-                        ${genres ? `<div class="movie-genres">${genres}</div>` : ''}
-                        ${directors ? `<div class="movie-directors">Dir: ${directors}</div>` : ''}
+                        <img class="movie-poster" src="${posterUrl}" alt="${movie.title}" onerror="this.src='https://via.placeholder.com/200x300?text=No+Poster'">
                     </div>
                 </a>
+                <div class="movie-info">
+                    <a href="${letterboxdUrl}" target="_blank" class="movie-title-link">
+                        ${movie.title}
+                    </a>
+                    <div class="movie-year">${movie.release_year || 'N/A'}</div>
+                    <div class="movie-genres">${(movie.genres || []).slice(0, 3).join(', ')}</div>
+                    ${movie.directors && movie.directors.length > 0 ? `<div class="movie-director">🎬 ${movie.directors.join(', ')}</div>` : ''}
+                </div>
             `;
+            movieGrid.appendChild(movieCard);
+        });
+    }
+    
+    // Display tier explanation with factors and progress bar
+    const tierExplanation = document.getElementById('tierExplanation');
+    if (tierExplanation) {
+        tierExplanation.textContent = getTierExplanation(data.level, data.score, data.analysis);
+    }
+    
+    // Display tier factors (bullet points)
+    const tierFactors = document.getElementById('tierFactors');
+    if (tierFactors && data.analysis) {
+        const analysis = data.analysis;
+        let factorsHTML = '';
+        
+        // Genre Diversity
+        const genreText = analysis.genreCount >= 7 ? 'excellent variety' : 
+                         analysis.genreCount >= 5 ? 'decent variety' : 'limited variety';
+        factorsHTML += `<li><span class="factor-icon">🎬</span> <strong>Genre Diversity:</strong> ${analysis.genreCount} genres - ${genreText}</li>`;
+        
+        // Era Span
+        const eraText = analysis.yearSpread >= 50 ? 'impressive range across eras' :
+                       analysis.yearSpread >= 25 ? 'good exploration of different periods' :
+                       `Only ${analysis.yearSpread} years - consider exploring different eras`;
+        factorsHTML += `<li><span class="factor-icon">📅</span> <strong>Era Span:</strong> ${eraText}</li>`;
+        
+        // International Cinema
+        if (analysis.hasForeign) {
+            factorsHTML += `<li><span class="factor-icon">✅</span> <strong>International Cinema:</strong> ${analysis.auteurCount > 0 ? 'Multiple' : '1'} non-English film - you explore world cinema!</li>`;
+        }
+        
+        // Famous Directors
+        if (analysis.auteurCount > 0) {
+            factorsHTML += `<li><span class="factor-icon">🎥</span> <strong>Famous Directors:</strong> ${analysis.auteurCount} renowned filmmaker${analysis.auteurCount > 1 ? 's' : ''} in your picks</li>`;
+        }
+        
+        // Classic Cinema
+        if (analysis.hasClassic) {
+            factorsHTML += `<li><span class="factor-icon">🎞️</span> <strong>Classic Cinema:</strong> Includes pre-1970s films - you appreciate film history!</li>`;
+        }
+        
+        tierFactors.innerHTML = factorsHTML;
+    }
+    
+    // Display level progress bar
+    const levelProgressFill = document.getElementById('levelProgressFill');
+    const levelScoreDisplay = document.getElementById('levelScoreDisplay');
+    if (levelProgressFill && levelScoreDisplay) {
+        const scorePercent = Math.min(100, Math.max(0, data.score));
+        levelProgressFill.style.width = `${scorePercent}%`;
+        levelScoreDisplay.textContent = `Score: ${data.score}/100`;
+    }
+    
+    // Display taste profile
+    const tasteDescription = document.getElementById('tasteDescription');
+    const tasteStats = document.getElementById('tasteStats');
+    if (tasteDescription && tasteStats && data.analysis && data.movies) {
+        // Get top genres
+        const allGenres = data.movies.flatMap(m => m.genres || []);
+        const genreCounts = {};
+        allGenres.forEach(g => genreCounts[g] = (genreCounts[g] || 0) + 1);
+        const topGenres = Object.entries(genreCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([g]) => g);
+        
+        // Determine era preference
+        const avgYear = data.movies.reduce((sum, m) => sum + (m.release_year || 2000), 0) / data.movies.length;
+        let eraPreference = avgYear >= 2010 ? '2010s+ contemporary' :
+                          avgYear >= 2000 ? '2000s modern classics' :
+                          avgYear >= 1990 ? '90s cinema' :
+                          avgYear >= 1980 ? '80s films' :
+                          avgYear >= 1970 ? '70s New Hollywood' : 'Classic cinema';
+        
+        // Cultural scope
+        const culturalScope = data.analysis.hasForeign ? 'International curious' : 'Hollywood focused';
+        
+        // Build description
+        const genreList = topGenres.length > 0 ? topGenres.join(', ') : 'various genres';
+        let description = `Your favorites center around <strong>${genreList}</strong>.`;
+        if (data.analysis.hasForeign) {
+            description += ` You're open to international films, which shows cultural curiosity.`;
+        }
+        tasteDescription.innerHTML = description;
+        
+        // Build stats cards
+        const primaryGenre = topGenres[0] || 'Mixed';
+        const genreCount = genreCounts[primaryGenre] || 0;
+        
+        tasteStats.innerHTML = `
+            <div class="taste-stat">
+                <span class="taste-stat-icon">🎭</span>
+                <span class="taste-stat-label">Primary Genre</span>
+                <span class="taste-stat-value">${primaryGenre} (${genreCount}/4 films)</span>
+            </div>
+            <div class="taste-stat">
+                <span class="taste-stat-icon">⏰</span>
+                <span class="taste-stat-label">Era Preference</span>
+                <span class="taste-stat-value">${eraPreference}</span>
+            </div>
+            <div class="taste-stat">
+                <span class="taste-stat-icon">🌍</span>
+                <span class="taste-stat-label">Cultural Scope</span>
+                <span class="taste-stat-value">${culturalScope}</span>
+            </div>
+        `;
+    }
+    
+    // Display score breakdown with progress bars
+    const breakdownContainer = document.getElementById('scoreBreakdown');
+    if (breakdownContainer && data.scoreBreakdown) {
+        const sb = data.scoreBreakdown;
+        const analysis = data.analysis || {};
+        
+        // Build descriptive subtitles for each category
+        const ratingSubtitle = `${(parseFloat(data.avgRating) * 2).toFixed(1)} avg rating`;
+        const genreSubtitle = `${analysis.genreCount || 0} unique genres`;
+        const raritySubtitle = sb.rarity >= 10 ? 'Beyond mainstream picks' : 'Popular selections';
+        const eraSubtitle = `${analysis.yearSpread || 0} year span`;
+        
+        // Build cinephile traits subtitle
+        let traitsDetails = [];
+        if (analysis.hasForeign) traitsDetails.push('foreign');
+        if (analysis.hasClassic) traitsDetails.push('classic');
+        if (analysis.auteurCount > 0) traitsDetails.push(`${analysis.auteurCount} famous director${analysis.auteurCount > 1 ? 's' : ''}`);
+        const traitsSubtitle = traitsDetails.length > 0 ? traitsDetails.join(', ') : 'No special traits';
+        
+        breakdownContainer.innerHTML = `
+            <div class="breakdown-row">
+                <div class="breakdown-header">
+                    <span class="breakdown-label">Film Quality</span>
+                    <span class="breakdown-points">+${sb.rating || 0} pts</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${(sb.rating / 20) * 100}%"></div>
+                </div>
+                <span class="breakdown-subtitle">${ratingSubtitle}</span>
+            </div>
             
-            movieGrid.appendChild(div);
-        });
+            <div class="breakdown-row">
+                <div class="breakdown-header">
+                    <span class="breakdown-label">Genre Diversity</span>
+                    <span class="breakdown-points">+${sb.genre || 0} pts</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${(sb.genre / 20) * 100}%"></div>
+                </div>
+                <span class="breakdown-subtitle">${genreSubtitle}</span>
+            </div>
+            
+            <div class="breakdown-row">
+                <div class="breakdown-header">
+                    <span class="breakdown-label">Hidden Gems</span>
+                    <span class="breakdown-points">+${sb.rarity || 0} pts</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${(sb.rarity / 20) * 100}%"></div>
+                </div>
+                <span class="breakdown-subtitle">${raritySubtitle}</span>
+            </div>
+            
+            <div class="breakdown-row">
+                <div class="breakdown-header">
+                    <span class="breakdown-label">Era Range</span>
+                    <span class="breakdown-points">+${sb.era || 0} pts</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${(sb.era / 20) * 100}%"></div>
+                </div>
+                <span class="breakdown-subtitle">${eraSubtitle}</span>
+            </div>
+            
+            <div class="breakdown-row">
+                <div class="breakdown-header">
+                    <span class="breakdown-label">Cinephile Traits</span>
+                    <span class="breakdown-points">+${sb.traits || 0} pts</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${(sb.traits / 20) * 100}%"></div>
+                </div>
+                <span class="breakdown-subtitle">${traitsSubtitle}</span>
+            </div>
+            
+            ${sb.penalty > 0 ? `
+            <div class="breakdown-row penalty">
+                <div class="breakdown-header">
+                    <span class="breakdown-label">Franchise Penalty</span>
+                    <span class="breakdown-points penalty-text">-${sb.penalty} pts</span>
+                </div>
+                <div class="progress-bar penalty-bar">
+                    <div class="progress-fill penalty-fill" style="width: ${(sb.penalty / 12) * 100}%"></div>
+                </div>
+                <span class="breakdown-subtitle">Multiple franchise films</span>
+            </div>
+            ` : ''}
+            
+            <div class="breakdown-total-row">
+                <span class="total-label">Total Score</span>
+                <span class="total-value">${sb.finalScore || 0} / 100</span>
+            </div>
+        `;
     }
-
-    // Display full profile analysis
-    displayProfileAnalysis(data);
-
-    // Show results with animation
+    
+    // Show results
     document.getElementById('result').classList.remove('hidden');
-    
-    // Scroll to results
-    document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
 }
 
-function displayProfileAnalysis(data) {
-    // Display Full Profile Breakdown only
-    displayFullProfileAnalysis(data);
-}
-
-// ============================================
-// FULL PROFILE BREAKDOWN WITH DETAILED INSIGHTS
-// ============================================
-function displayFullProfileAnalysis(data) {
-    const container = document.getElementById('profileAnalysisContent');
-    container.innerHTML = '';
-    
-    const profileStats = data.profileStats || {};
-    const movies = data.movies || [];
-    const analysis = data.analysis || {};
-    
-    let html = '';
-    
-    // 1. Watcher Experience Level - Detailed explanation
-    const filmsWatched = profileStats.filmsWatched || 0;
-    const watcherInsight = getWatcherInsight(filmsWatched);
-    
-    html += `
-        <div class="analysis-category">
-            <div class="analysis-category-title">🎬 Watcher Experience</div>
-            <div class="analysis-category-content">
-                <div class="insight-badge ${watcherInsight.class}">${watcherInsight.badge}</div>
-                <div class="insight-explanation">
-                    <p><strong>Why this level?</strong></p>
-                    <p>${watcherInsight.explanation}</p>
-                </div>
-                ${filmsWatched > 0 ? `
-                <div class="profile-stats-grid" style="margin-top: 15px;">
-                    <div class="profile-stat">
-                        <span class="stat-value">${filmsWatched.toLocaleString()}</span>
-                        <span class="stat-label">Films Logged</span>
-                    </div>
-                    ${profileStats.filmsThisYear > 0 ? `
-                    <div class="profile-stat">
-                        <span class="stat-value">${profileStats.filmsThisYear}</span>
-                        <span class="stat-label">This Year</span>
-                    </div>
-                    ` : ''}
-                    ${profileStats.followers > 0 ? `
-                    <div class="profile-stat">
-                        <span class="stat-value">${profileStats.followers.toLocaleString()}</span>
-                        <span class="stat-label">Followers</span>
-                    </div>
-                    ` : ''}
-                </div>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    
-    // 2. Tier Explanation - Why they got this specific tier
-    const tierInsight = getTierInsight(data.level, data.score, analysis, movies);
-    html += `
-        <div class="analysis-category">
-            <div class="analysis-category-title">${data.tierIcon} ${data.tierName}</div>
-            <div class="analysis-category-content">
-                <div class="tier-badge-container">
-                    <div class="insight-badge tier-badge" style="background: ${data.tierColor}; border-color: ${data.tierColor};">
-                        <span class="tier-emoji">${data.tierIcon}</span>
-                        <span class="tier-level-text">Level ${data.level}</span>
-                    </div>
-                </div>
-                <div class="insight-explanation">
-                    <p><strong>Why this tier?</strong></p>
-                    <p>${tierInsight.mainReason}</p>
-                    <ul class="insight-list">
-                        ${tierInsight.factors.map(f => `<li>${f}</li>`).join('')}
-                    </ul>
-                </div>
-                <div class="analysis-bar" style="margin-top: 15px;">
-                    <div class="analysis-bar-fill" style="width: ${Math.min(100, data.score)}%"></div>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.8rem;">
-                    <span>Level 1</span>
-                    <span style="color: #00e054; font-weight: 600;">Score: ${data.score}/100</span>
-                    <span>Level 10</span>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // 3. Taste Profile - What your Top 4 reveals
-    const tasteInsight = getTasteInsight(movies, analysis);
-    html += `
-        <div class="analysis-category">
-            <div class="analysis-category-title">🎭 Your Taste Profile</div>
-            <div class="analysis-category-content">
-                <div class="insight-explanation">
-                    <p><strong>What your Top 4 reveals:</strong></p>
-                    <p>${tasteInsight.summary}</p>
-                </div>
-                ${tasteInsight.traits.length > 0 ? `
-                <div class="taste-traits">
-                    ${tasteInsight.traits.map(t => `
-                        <div class="taste-trait">
-                            <span class="trait-icon">${t.icon}</span>
-                            <span class="trait-label">${t.label}</span>
-                            <span class="trait-desc">${t.desc}</span>
-                        </div>
-                    `).join('')}
-                </div>
-                ` : ''}
-            </div>
-        </div>
-    `;
-    
-    // 4. Score Breakdown - How the score was calculated
-    html += `
-        <div class="analysis-category">
-            <div class="analysis-category-title">📊 Score Breakdown</div>
-            <div class="analysis-category-content">
-                <div class="insight-explanation">
-                    <p><strong>How we calculated your score:</strong></p>
-                </div>
-                <div class="score-factors">
-                    ${getScoreFactors(analysis, movies, data.score, data.scoreBreakdown)}
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // 5. Tips to improve (if not at max level)
-    if (data.level < 10) {
-        const tips = getImprovementTips(data.level, analysis, movies);
-        html += `
-            <div class="analysis-category" style="border-left-color: #f5c518;">
-                <div class="analysis-category-title">💡 How to Level Up</div>
-                <div class="analysis-category-content">
-                    <div class="insight-explanation">
-                        <p><strong>Tips to reach Level ${data.level + 1}:</strong></p>
-                        <ul class="insight-list tips-list">
-                            ${tips.map(t => `<li>${t}</li>`).join('')}
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    // Link to Letterboxd
-    if (data.username) {
-        html += `
-            <div class="analysis-category" style="border-left-color: #00e054;">
-                <div class="analysis-category-content">
-                    <p style="margin: 0;">
-                        🔗 <a href="https://letterboxd.com/${data.username}/" target="_blank" style="color: #00e054; text-decoration: none;">
-                            View full profile on Letterboxd →
-                        </a>
-                    </p>
-                </div>
-            </div>
-        `;
-    }
-    
-    container.innerHTML = html;
-}
-
-// Helper: Get detailed watcher insight based on films watched
-function getWatcherInsight(filmsWatched) {
-    if (filmsWatched >= 5000) {
-        return {
-            badge: '🏆 Legendary Cinephile',
-            class: 'legendary',
-            explanation: `With over ${filmsWatched.toLocaleString()} films logged, you're in the top 0.1% of movie watchers globally. You've dedicated thousands of hours to cinema and have likely seen films from every era, genre, and country. Your knowledge rivals professional film critics and historians.`
-        };
-    } else if (filmsWatched >= 2500) {
-        return {
-            badge: '🎬 Expert Viewer',
-            class: 'expert',
-            explanation: `${filmsWatched.toLocaleString()} films is exceptional! At roughly 3-4 films per week for over a decade, you've built an encyclopedic knowledge of cinema. You can discuss obscure gems alongside mainstream hits and likely have strong opinions about film theory.`
-        };
-    } else if (filmsWatched >= 1000) {
-        return {
-            badge: '🎞️ Dedicated Cinephile',
-            class: 'dedicated',
-            explanation: `Crossing 1,000 films is a major milestone! You watch about 2-3 films weekly and have explored beyond just popular releases. Your taste is likely well-developed, and you appreciate the craft behind filmmaking.`
-        };
-    } else if (filmsWatched >= 500) {
-        return {
-            badge: '🎥 Film Enthusiast',
-            class: 'enthusiast',
-            explanation: `${filmsWatched} films shows genuine passion for movies. You're past casual viewing and actively seek out new films. You probably have favorite directors, genres, and can recommend hidden gems to friends.`
-        };
-    } else if (filmsWatched >= 100) {
-        return {
-            badge: '🍿 Active Viewer',
-            class: 'regular',
-            explanation: `With ${filmsWatched} films, you're building a solid foundation. You watch regularly and are starting to develop personal taste. Keep exploring different genres and eras to expand your cinematic horizons!`
-        };
-    } else if (filmsWatched > 0) {
-        return {
-            badge: '🌟 Newcomer',
-            class: 'newcomer',
-            explanation: `Welcome to the world of cinema! You've logged ${filmsWatched} films so far. Every movie watched is a new adventure. The best part? You have countless classics and hidden gems waiting to be discovered!`
-        };
-    } else {
-        return {
-            badge: '📽️ Getting Started',
-            class: 'newcomer',
-            explanation: `Your film journey is just beginning! Start logging the movies you watch to track your progress and discover patterns in your taste.`
-        };
-    }
-}
-
-// Helper: Get tier insight with detailed reasons
-function getTierInsight(level, score, analysis, movies) {
-    const factors = [];
-    let mainReason = '';
-    
-    // Analyze what contributed to their score
-    const genreCount = analysis.genreCount || 0;
-    const yearSpread = analysis.yearSpread || 0;
-    const auteurCount = analysis.auteurCount || 0;
-    const foreignCount = movies.filter(m => m.is_foreign).length;
-    const classicCount = movies.filter(m => m.release_year < 1970).length;
-    const avgRarity = analysis.avgRarity || 0;
-    
-    if (level >= 8) {
-        mainReason = `Your Top 4 demonstrates exceptional taste with a perfect blend of diversity, depth, and cultural appreciation. You've chosen films that show genuine understanding of cinema as an art form.`;
-    } else if (level >= 6) {
-        mainReason = `Your selections show strong cinematic taste with good variety and some adventurous choices. You balance popular favorites with more distinctive picks.`;
-    } else if (level >= 4) {
-        mainReason = `Your Top 4 shows solid movie taste with room to explore more diverse cinema. You have a foundation of well-regarded films.`;
-    } else {
-        mainReason = `Your Top 4 consists mainly of popular, mainstream films. While these are great movies, exploring beyond the blockbusters would reveal your deeper taste.`;
-    }
-    
-    // Add specific factors
-    if (genreCount >= 6) {
-        factors.push(`✅ <strong>Genre Diversity:</strong> ${genreCount} different genres - excellent variety!`);
-    } else if (genreCount >= 4) {
-        factors.push(`📊 <strong>Genre Diversity:</strong> ${genreCount} genres - decent variety`);
-    } else {
-        factors.push(`📉 <strong>Genre Diversity:</strong> Only ${genreCount} genres - try branching out`);
-    }
-    
-    if (yearSpread > 30) {
-        factors.push(`✅ <strong>Era Span:</strong> ${yearSpread} years between oldest and newest - great historical range!`);
-    } else if (yearSpread > 15) {
-        factors.push(`📊 <strong>Era Span:</strong> ${yearSpread} years - moderate time range`);
-    } else {
-        factors.push(`📉 <strong>Era Span:</strong> Only ${yearSpread} years - consider exploring different eras`);
-    }
-    
-    if (foreignCount > 0) {
-        factors.push(`✅ <strong>International Cinema:</strong> ${foreignCount} non-English film${foreignCount > 1 ? 's' : ''} - you explore world cinema!`);
-    } else {
-        factors.push(`📉 <strong>International Cinema:</strong> No foreign films - a whole world awaits!`);
-    }
-    
-    if (auteurCount > 0) {
-        factors.push(`✅ <strong>Auteur Directors:</strong> ${auteurCount} film${auteurCount > 1 ? 's' : ''} from acclaimed directors`);
-    }
-    
-    if (classicCount > 0) {
-        factors.push(`✅ <strong>Classic Cinema:</strong> ${classicCount} pre-1970 classic${classicCount > 1 ? 's' : ''} - respect for film history!`);
-    }
-    
-    if (avgRarity > 40) {
-        factors.push(`✅ <strong>Hidden Gems:</strong> Your picks include lesser-known films - adventurous taste!`);
-    } else if (avgRarity < 20) {
-        factors.push(`📊 <strong>Popularity:</strong> Your picks are well-known favorites - safe but solid choices`);
-    }
-    
-    return { mainReason, factors };
-}
-
-// Helper: Get taste profile insight
-function getTasteInsight(movies, analysis) {
-    const traits = [];
-    let summary = '';
-    
-    // Collect data
-    const allGenres = [];
-    const allDirectors = [];
-    movies.forEach(m => {
-        if (Array.isArray(m.genres)) allGenres.push(...m.genres);
-        if (Array.isArray(m.directors)) allDirectors.push(...m.directors);
-    });
-    
-    const years = movies.map(m => m.release_year).filter(y => y > 0);
-    const avgYear = years.length > 0 ? Math.round(years.reduce((a, b) => a + b, 0) / years.length) : 2000;
-    const foreignCount = movies.filter(m => m.is_foreign).length;
-    
-    // Genre preference
-    const genreCounts = {};
-    allGenres.forEach(g => genreCounts[g] = (genreCounts[g] || 0) + 1);
-    const topGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
-    
-    if (topGenres.length > 0) {
-        const primaryGenre = topGenres[0][0];
-        traits.push({
-            icon: '🎭',
-            label: 'Primary Genre',
-            desc: `${primaryGenre} (${topGenres[0][1]}/4 films)`
-        });
-    }
-    
-    // Era preference
-    if (avgYear < 1980) {
-        traits.push({ icon: '📜', label: 'Era Preference', desc: 'Classic cinema lover' });
-    } else if (avgYear < 2000) {
-        traits.push({ icon: '📼', label: 'Era Preference', desc: '80s-90s golden age fan' });
-    } else if (avgYear < 2015) {
-        traits.push({ icon: '💿', label: 'Era Preference', desc: '2000s modern classics' });
-    } else {
-        traits.push({ icon: '🎞️', label: 'Era Preference', desc: 'Contemporary cinema' });
-    }
-    
-    // Cultural taste
-    if (foreignCount >= 2) {
-        traits.push({ icon: '🌍', label: 'Cultural Scope', desc: 'World cinema explorer' });
-    } else if (foreignCount === 1) {
-        traits.push({ icon: '🗺️', label: 'Cultural Scope', desc: 'International curious' });
-    } else {
-        traits.push({ icon: '🇺🇸', label: 'Cultural Scope', desc: 'Hollywood focused' });
-    }
-    
-    // Director taste
-    if (analysis.auteurCount >= 2) {
-        traits.push({ icon: '🎬', label: 'Director Taste', desc: 'Auteur appreciator' });
-    }
-    
-    // Build summary
-    const topGenreNames = topGenres.map(g => g[0]).join(', ');
-    summary = `Your favorites center around <strong>${topGenreNames || 'diverse genres'}</strong>`;
-    
-    if (avgYear < 1990) {
-        summary += `, with a clear appreciation for classic cinema`;
-    } else if (avgYear > 2010) {
-        summary += `, mostly from recent releases`;
-    }
-    
-    if (foreignCount > 0) {
-        summary += `. You're open to international films, which shows cultural curiosity`;
-    }
-    
-    summary += '.';
-    
-    return { summary, traits };
-}
-
-// Helper: Get score breakdown factors
-// Uses backend scoreBreakdown for accurate display
-function getScoreFactors(analysis, movies, totalScore, scoreBreakdown) {
-    // Use backend breakdown if available, otherwise calculate locally
-    const breakdown = scoreBreakdown || {};
-    
-    const factors = [];
-    
-    // Get values from backend breakdown or calculate fallback
-    const ratingScore = breakdown.rating !== undefined ? breakdown.rating : 
-        Math.round(Math.min(20, Math.max(0, ((analysis.avgRating || 7) - 5) * 5)));
-    const genreScore = breakdown.genre !== undefined ? breakdown.genre : 
-        Math.round(Math.min(20, (analysis.genreCount || 0) * 2.5));
-    const rarityScore = breakdown.rarity !== undefined ? breakdown.rarity : 
-        Math.round(Math.min(20, (analysis.avgRarity || 0) * 0.4));
-    const eraScore = breakdown.era !== undefined ? breakdown.era : 
-        Math.round(Math.min(20, (analysis.yearSpread || 0) * 0.25));
-    const traitScore = breakdown.traits !== undefined ? breakdown.traits : 0;
-    const penalty = breakdown.penalty !== undefined ? breakdown.penalty : 0;
-    
-    // Get descriptive values
-    const genreCount = analysis.genreCount || 0;
-    const yearSpread = analysis.yearSpread || 0;
-    const auteurCount = analysis.auteurCount || 0;
-    const foreignCount = movies.filter(m => m.is_foreign).length;
-    const avgRating = movies.length > 0 ? 
-        movies.map(m => parseFloat(m.rating || 0)).reduce((a, b) => a + b, 0) / movies.length : 0;
-    
-    // 1. RATING QUALITY
-    factors.push({ 
-        label: 'Film Quality', 
-        score: ratingScore, 
-        max: 20, 
-        desc: `${avgRating.toFixed(1)} avg rating`,
-        positive: true
-    });
-    
-    // 2. GENRE DIVERSITY
-    factors.push({ 
-        label: 'Genre Diversity', 
-        score: genreScore, 
-        max: 20, 
-        desc: `${genreCount} unique genres`,
-        positive: true
-    });
-    
-    // 3. OBSCURITY/RARITY
-    factors.push({ 
-        label: 'Hidden Gems', 
-        score: rarityScore, 
-        max: 20, 
-        desc: `Beyond mainstream picks`,
-        positive: true
-    });
-    
-    // 4. ERA SPREAD
-    factors.push({ 
-        label: 'Era Range', 
-        score: eraScore, 
-        max: 20, 
-        desc: `${yearSpread} year span`,
-        positive: true
-    });
-    
-    // 5. CINEPHILE TRAITS
-    let traitDescs = [];
-    if (foreignCount > 0) traitDescs.push(`${foreignCount} foreign`);
-    if (analysis.hasClassic) traitDescs.push('classic era');
-    if (auteurCount > 0) traitDescs.push(`${auteurCount} auteur`);
-    
-    factors.push({ 
-        label: 'Cinephile Traits', 
-        score: traitScore, 
-        max: 20, 
-        desc: traitDescs.length > 0 ? traitDescs.join(', ') : 'No special traits',
-        positive: true
-    });
-    
-    // 6. PENALTY (if any)
-    if (penalty > 0) {
-        const franchiseCount = analysis.franchiseCount || 0;
-        factors.push({ 
-            label: 'Franchise Penalty', 
-            score: penalty, 
-            max: 12, 
-            desc: `${franchiseCount} franchise films - try branching out!`,
-            positive: false
-        });
-    }
-    
-    // Build HTML
-    let html = '<div class="score-breakdown">';
-    
-    // Show positive factors first
-    factors.filter(f => f.positive).forEach(f => {
-        const percentage = (f.score / f.max) * 100;
-        html += `
-            <div class="score-factor">
-                <div class="factor-header">
-                    <span class="factor-label">${f.label}</span>
-                    <span class="factor-points ${f.score === 0 ? 'zero' : ''}">+${f.score} pts</span>
-                </div>
-                <div class="factor-bar">
-                    <div class="factor-bar-fill" style="width: ${percentage}%"></div>
-                </div>
-                <div class="factor-desc">${f.desc}</div>
-            </div>
-        `;
-    });
-    
-    // Show penalties (negative factors)
-    factors.filter(f => !f.positive).forEach(f => {
-        const percentage = (f.score / f.max) * 100;
-        html += `
-            <div class="score-factor penalty">
-                <div class="factor-header">
-                    <span class="factor-label">⚠️ ${f.label}</span>
-                    <span class="factor-points negative">-${f.score} pts</span>
-                </div>
-                <div class="factor-bar penalty-bar">
-                    <div class="factor-bar-fill penalty-fill" style="width: ${percentage}%"></div>
-                </div>
-                <div class="factor-desc">${f.desc}</div>
-            </div>
-        `;
-    });
-    
-    // Show total score only
-    html += `
-        <div class="score-total">
-            <span>Total Score</span>
-            <span class="total-value">${totalScore} / 100</span>
-        </div>
-    `;
-    
-    html += '</div>';
-    
-    return html;
-}
-
-// Helper: Get improvement tips based on current level
-function getImprovementTips(level, analysis, movies) {
-    const tips = [];
-    
-    const foreignCount = movies.filter(m => m.is_foreign).length;
-    const classicCount = movies.filter(m => m.release_year < 1970).length;
-    
-    if (foreignCount === 0) {
-        tips.push('🌍 Add a foreign language film to your Top 4 - try Parasite, Amélie, or Seven Samurai');
-    }
-    
-    if (classicCount === 0) {
-        tips.push('📜 Include a pre-1970 classic - consider Casablanca, 12 Angry Men, or Psycho');
-    }
-    
-    if ((analysis.genreCount || 0) < 5) {
-        tips.push('🎭 Diversify your genres - your Top 4 has similar genres, try something different');
-    }
-    
-    if ((analysis.yearSpread || 0) < 20) {
-        tips.push('📅 Expand your era range - include films from different decades');
-    }
-    
-    if ((analysis.auteurCount || 0) === 0) {
-        tips.push('🎬 Explore auteur cinema - directors like Kubrick, Scorsese, Kurosawa, or Villeneuve');
-    }
-    
-    if ((analysis.avgRarity || 0) < 30) {
-        tips.push('💎 Discover hidden gems - look beyond the most popular films on Letterboxd');
-    }
-    
-    // Generic tips if none apply
-    if (tips.length === 0) {
-        tips.push('🎯 Keep exploring diverse cinema to refine your taste');
-        tips.push('📝 Watch more films from the Letterboxd top 250 list');
-    }
-    
-    return tips.slice(0, 4); // Max 4 tips
+// Get tier explanation based on level
+function getTierExplanation(level, score, analysis) {
+    const explanations = {
+        1: "Your Top 4 consists mostly of mainstream popular films. There's a whole world of cinema waiting to be explored!",
+        2: "You enjoy popular movies and have started developing your taste. Keep exploring different genres and eras!",
+        3: "Your taste shows solid foundations with some variety. You're on your way to becoming a true cinephile.",
+        4: "You appreciate variety across genres and eras. Your Top 4 shows you're willing to explore beyond the mainstream.",
+        5: "You dig deeper than most viewers. Your selections show genuine appreciation for quality filmmaking.",
+        6: "Your taste is sharp and intentional. You've clearly developed an eye for quality cinema.",
+        7: "You have excellent, well-rounded taste. Your Top 4 demonstrates deep appreciation for the art of film.",
+        8: "Your picks show deep film appreciation. You understand what makes cinema truly special.",
+        9: "You see cinema on another level. Your selections reveal a sophisticated understanding of film as art.",
+        10: "Your taste is legendary. Your Top 4 represents the pinnacle of cinematic appreciation."
+    };
+    return explanations[level] || explanations[1];
 }
 
 function addAnalysisItem(grid, icon, label) {
     const div = document.createElement('div');
-    div.className = 'analysis-item';
+    div.className = 'analysis-item badge';
     div.innerHTML = `
         <div class="analysis-value">${icon}</div>
         <div class="analysis-label">${label}</div>
@@ -717,29 +550,17 @@ function addAnalysisItem(grid, icon, label) {
     grid.appendChild(div);
 }
 
-// Convert numeric rating to Letterboxd-style star display
+// =====================================================
+// UTILITY FUNCTIONS
+// =====================================================
 function getStarDisplay(rating) {
     const fullStars = Math.floor(rating);
-    const hasHalf = (rating - fullStars) >= 0.25 && (rating - fullStars) < 0.75;
-    const roundUp = (rating - fullStars) >= 0.75;
-    
-    let stars = '';
-    const totalFull = roundUp ? fullStars + 1 : fullStars;
-    
-    for (let i = 0; i < totalFull && i < 5; i++) {
-        stars += '★';
-    }
-    
-    if (hasHalf && totalFull < 5) {
-        stars += '½';
-    }
-    
-    // If rating is very low, show at least something
-    if (stars === '' && rating > 0) {
-        stars = '½';
-    }
-    
-    return stars || '☆';
+    const halfStar = rating % 1 >= 0.5;
+    let stars = '★'.repeat(fullStars);
+    if (halfStar) stars += '½';
+    const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+    stars += '☆'.repeat(Math.max(0, emptyStars));
+    return stars;
 }
 
 function showError(message) {
@@ -752,12 +573,52 @@ function hideError() {
     document.getElementById('error').classList.add('hidden');
 }
 
-// Allow Enter key to submit
-document.addEventListener('DOMContentLoaded', () => {
-    const input = document.getElementById('username');
-    input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            fetchRank();
-        }
-    });
-});
+// =====================================================
+// SCREENSHOT FUNCTION
+// =====================================================
+async function takeScreenshot() {
+    const shareableContent = document.getElementById('shareableContent');
+    const btn = document.querySelector('.screenshot-btn');
+    const originalText = btn.innerHTML;
+    
+    try {
+        btn.innerHTML = '⏳ Generating...';
+        btn.disabled = true;
+        
+        // Add screenshot mode class for styling
+        shareableContent.classList.add('screenshot-mode');
+        
+        // Use html2canvas to capture
+        const canvas = await html2canvas(shareableContent, {
+            backgroundColor: '#14181c',
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            logging: false
+        });
+        
+        // Remove screenshot mode
+        shareableContent.classList.remove('screenshot-mode');
+        
+        // Convert to image and download
+        const link = document.createElement('a');
+        link.download = 'my-top4-theory.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        btn.innerHTML = '✅ Saved!';
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Screenshot error:', error);
+        shareableContent.classList.remove('screenshot-mode');
+        btn.innerHTML = '❌ Failed';
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }, 2000);
+    }
+}

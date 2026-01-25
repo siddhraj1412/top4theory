@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Top 4 Theory - Letterboxd Analyzer</title>
+    <title>Top 4 Theory - Cinema Level Calculator</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -16,6 +16,9 @@
         gtag('js', new Date());
         gtag('config', 'G-6MXK1C0WSL');
     </script>
+    
+    <!-- html2canvas for screenshots -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
     <div class="background-gradient"></div>
@@ -23,67 +26,188 @@
     <div class="container">
         <header class="header">
             <h1 class="logo">🎬 Top 4 <span class="highlight">Theory</span></h1>
-            <p class="tagline">Discover your true Cinema Level based on your Letterboxd Top 4</p>
+            <p class="tagline">Discover your true Cinema Level based on your favorite films</p>
             <a href="https://letterboxd.com/SiddhrajThakor/" target="_blank" class="creator-badge">
                 by @SiddhrajThakor
             </a>
         </header>
 
-        <div class="search-section">
-            <div class="search-box">
-                <input type="text" id="username" placeholder="Enter your Letterboxd username" autocomplete="off">
-                <button onclick="fetchRank()" id="analyzeBtn">
-                    <span class="btn-text">ANALYZE</span>
-                    <span class="btn-loader hidden">⏳</span>
-                </button>
+        <div class="movie-selection-section">
+            <h2 class="selection-title">🎥 Select Your Top 4 Favorite Films</h2>
+            <p class="selection-subtitle">Search and select your 4 favorite movies of all time</p>
+            
+            <!-- Search Overlay -->
+            <div class="search-overlay" id="searchOverlay" onclick="closeSearch()"></div>
+            
+            <!-- Global Search Modal -->
+            <div class="search-container" id="searchModal">
+                <input type="text" class="movie-search" id="movieSearchInput" placeholder="Type a movie name..." autocomplete="off">
+                <div class="search-results" id="searchResults"></div>
             </div>
-            <p class="hint">Example: Try "SiddhrajThakor" or any Letterboxd username</p>
+            
+            <div class="movie-slots">
+                <!-- Slot 1 -->
+                <div class="movie-slot" data-slot="1" onclick="openSearch(1)">
+                    <div class="slot-number">1</div>
+                    <div class="slot-content empty" id="slot-1">
+                        <div class="empty-state">
+                            <span class="empty-icon">🎬</span>
+                            <span class="empty-text">Click to add movie</span>
+                        </div>
+                        <div class="selected-movie" style="display: none;">
+                            <img class="selected-poster" src="" alt="">
+                            <div class="selected-info">
+                                <div class="selected-title"></div>
+                                <div class="selected-year"></div>
+                            </div>
+                            <button class="remove-btn" onclick="event.stopPropagation(); removeMovie(1)">✕</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Slot 2 -->
+                <div class="movie-slot" data-slot="2" onclick="openSearch(2)">
+                    <div class="slot-number">2</div>
+                    <div class="slot-content empty" id="slot-2">
+                        <div class="empty-state">
+                            <span class="empty-icon">🎬</span>
+                            <span class="empty-text">Click to add movie</span>
+                        </div>
+                        <div class="selected-movie" style="display: none;">
+                            <img class="selected-poster" src="" alt="">
+                            <div class="selected-info">
+                                <div class="selected-title"></div>
+                                <div class="selected-year"></div>
+                            </div>
+                            <button class="remove-btn" onclick="event.stopPropagation(); removeMovie(2)">✕</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Slot 3 -->
+                <div class="movie-slot" data-slot="3" onclick="openSearch(3)">
+                    <div class="slot-number">3</div>
+                    <div class="slot-content empty" id="slot-3">
+                        <div class="empty-state">
+                            <span class="empty-icon">🎬</span>
+                            <span class="empty-text">Click to add movie</span>
+                        </div>
+                        <div class="selected-movie" style="display: none;">
+                            <img class="selected-poster" src="" alt="">
+                            <div class="selected-info">
+                                <div class="selected-title"></div>
+                                <div class="selected-year"></div>
+                            </div>
+                            <button class="remove-btn" onclick="event.stopPropagation(); removeMovie(3)">✕</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Slot 4 -->
+                <div class="movie-slot" data-slot="4" onclick="openSearch(4)">
+                    <div class="slot-number">4</div>
+                    <div class="slot-content empty" id="slot-4">
+                        <div class="empty-state">
+                            <span class="empty-icon">🎬</span>
+                            <span class="empty-text">Click to add movie</span>
+                        </div>
+                        <div class="selected-movie" style="display: none;">
+                            <img class="selected-poster" src="" alt="">
+                            <div class="selected-info">
+                                <div class="selected-title"></div>
+                                <div class="selected-year"></div>
+                            </div>
+                            <button class="remove-btn" onclick="event.stopPropagation(); removeMovie(4)">✕</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="selection-counter">
+                <span id="selectedCount">0</span>/4 films selected
+            </div>
+            
+            <button onclick="analyzeTop4()" id="analyzeBtn" class="analyze-btn" disabled>
+                <span class="btn-text">ANALYZE MY TOP 4</span>
+                <span class="btn-loader hidden">⏳</span>
+            </button>
         </div>
 
         <div id="error" class="error-box hidden"></div>
 
         <div id="result" class="result hidden">
-            <div class="rank-card" id="rankCard">
-                <div class="tier-badge" id="tierBadge">
-                    <span class="tier-icon" id="tierIcon">📺</span>
-                </div>
-                <div class="rank-info">
-                    <div class="username-display">@<span id="displayUser">username</span></div>
-                    <div class="tier-level">Level <span id="levelVal">1</span></div>
-                    <div class="tier-name" id="tierName">The Casual Viewer</div>
-                    <div class="tier-description" id="tierDescription">You watch movies to kill time.</div>
-                </div>
-                <div class="score-section">
-                    <div class="score-item">
-                        <div class="score-value" id="scoreVal">0</div>
-                        <div class="score-label">Score</div>
+            <div class="shareable-content" id="shareableContent">
+                <!-- 1. LEVEL / RANK CARD -->
+                <div class="rank-card" id="rankCard">
+                    <div class="tier-badge" id="tierBadge">
+                        <span class="tier-icon" id="tierIcon">📺</span>
                     </div>
-                    <div class="score-item">
-                        <div class="score-value"><span id="avgRating">☆</span></div>
-                        <div class="score-label">Avg Rating</div>
+                    <div class="rank-info">
+                        <div class="tier-level">Level <span id="levelVal">1</span></div>
+                        <div class="tier-name" id="tierName">The Casual Viewer</div>
+                        <div class="tier-description" id="tierDescription">You watch movies to kill time.</div>
+                    </div>
+                    <div class="score-section">
+                        <div class="score-item">
+                            <div class="score-value" id="scoreVal">0</div>
+                            <div class="score-label">Score</div>
+                        </div>
+                        <div class="score-item">
+                            <div class="score-value"><span id="avgRating">☆</span></div>
+                            <div class="score-label">Avg Rating</div>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="analysis-section">
-                <h3>📊 Top 4 Analysis Breakdown</h3>
-                <div class="analysis-grid" id="analysisGrid"></div>
-            </div>
+                <!-- 2. TOP 4 ANALYSIS BREAKDOWN -->
+                <div class="analysis-section">
+                    <h3>📊 Top 4 Analysis Breakdown</h3>
+                    <div class="analysis-grid" id="analysisGrid"></div>
+                </div>
 
-            <div class="reasons-section">
-                <h3>🔍 Why This Rank?</h3>
-                <ul id="reasonsList"></ul>
-            </div>
+                <!-- 3. WHY THIS RANK -->
+                <div class="reasons-section">
+                    <h3>🔍 Why This Rank?</h3>
+                    <ul id="reasonsList"></ul>
+                </div>
 
-            <div class="movies-section">
-                <h3>🎥 Your Top 4 Films</h3>
-                <div class="movie-grid" id="movieGrid"></div>
-            </div>
+                <!-- 4. YOUR TOP 4 FILMS -->
+                <div class="movies-section">
+                    <h3>🎥 Your Top 4 Films</h3>
+                    <div class="movie-grid" id="movieGrid"></div>
+                </div>
 
-            <div class="profile-analysis-section" id="profileAnalysis">
-                <h3>📊 Profile Breakdown</h3>
-                <p class="section-subtitle">Complete analysis of your Letterboxd profile</p>
-                <div class="profile-analysis-content" id="profileAnalysisContent"></div>
+                <!-- 5. WHY THIS TIER - Upgraded with progress bar -->
+                <div class="tier-explanation-section">
+                    <h3>💡 Why This Tier?</h3>
+                    <p id="tierExplanation"></p>
+                    <ul id="tierFactors" class="tier-factors-list"></ul>
+                    <div class="level-progress">
+                        <span class="level-label">Level 1</span>
+                        <div class="level-progress-bar">
+                            <div class="level-progress-fill" id="levelProgressFill"></div>
+                            <span class="level-score" id="levelScoreDisplay">Score: 0/100</span>
+                        </div>
+                        <span class="level-label">Level 10</span>
+                    </div>
+                </div>
+
+                <!-- 6. YOUR TASTE PROFILE -->
+                <div class="taste-profile-section">
+                    <h3>🎭 Your Taste Profile</h3>
+                    <div class="taste-profile-content">
+                        <p class="taste-subtitle">What your Top 4 reveals:</p>
+                        <p id="tasteDescription"></p>
+                        <div class="taste-stats" id="tasteStats"></div>
+                    </div>
+                </div>
+
+                <!-- 7. SCORE BREAKDOWN WITH PROGRESS BARS -->
+                <div class="breakdown-section">
+                    <h3>📊 Score Breakdown</h3>
+                    <p class="breakdown-subtitle">How we calculated your score:</p>
+                    <div class="score-breakdown" id="scoreBreakdown"></div>
+                </div>
             </div>
         </div>
 
@@ -155,7 +279,7 @@
                 </div>
                 
                 <p class="footer-note">Rating shown is out of 5 stars (multiply by 2 for TMDB's /10 scale)</p>
-                <p class="footer-credits">Built with ❤️ by <a href="https://letterboxd.com/SiddhrajThakor/" target="_blank" class="footer-link">@SiddhrajThakor</a> | Data from TMDB & Letterboxd</p>
+                <p class="footer-credits">Built with ❤️ by <a href="https://letterboxd.com/SiddhrajThakor/" target="_blank" class="footer-link">@SiddhrajThakor</a> | Data from TMDB</p>
             </div>
         </footer>
     </div>
