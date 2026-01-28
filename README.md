@@ -129,6 +129,8 @@ top4theory/
 GET /api/rank/:username
 ```
 
+---
+
 **Response:**
 
 ```json
