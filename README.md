@@ -121,41 +121,6 @@ top4theory/
 
 ---
 
-## 🔌 API Endpoints
-
-### Analyze a Letterboxd Profile
-
-```
-GET /api/rank/:username
-```
-
----
-
-**Response:**
-
-```json
-{
-  "username": "SiddhrajThakor",
-  "level": 7,
-  "tierName": "The Cinema Connoisseur",
-  "tierIcon": "🍷",
-  "tierDescription": "You have excellent, well-rounded taste.",
-  "tierColor": "#ffc107",
-  "score": 68,
-  "avgRating": "4.1",
-  "movies": [...],
-  "analysis": {
-    "genreCount": 8,
-    "yearSpread": 45,
-    "avgRarity": 23,
-    "auteurCount": 3
-  },
-  "reasons": [...]
-}
-```
-
----
-
 ## ⚙️ Scoring Algorithm
 
 The algorithm evaluates Top 4 picks across 5 equally-weighted factors (20 points each, 100 total):
