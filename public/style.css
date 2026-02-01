@@ -1324,6 +1324,28 @@ body {
     background: #e5c700;
 }
 
+/* GitHub button in footer */
+.footer-btn.github-btn {
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    padding: 10px 16px;
+}
+
+.footer-btn.github-btn:hover {
+    border-color: var(--text-primary);
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.02);
+}
+
+.footer-btn.github-btn svg {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    vertical-align: middle;
+    fill: currentColor;
+}
+
 .footer-note {
     font-size: 11px;
     color: var(--text-muted);
