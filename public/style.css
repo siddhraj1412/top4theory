@@ -1169,6 +1169,35 @@ body {
     gap: 10px;
 }
 
+/* Centered block for buttons placed before the tiers heading */
+.pre-tiers-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 0 0 18px 0;
+    flex-wrap: wrap;
+}
+
+.pre-tiers-buttons .footer-btn {
+    /* preserve UI — only control layout */
+    padding: 10px 20px;
+}
+
+/* Centered block for buttons placed before the tiers heading */
+.pre-tiers-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin: 0 0 18px 0;
+    flex-wrap: wrap;
+}
+
+.pre-tiers-buttons .footer-btn {
+    /* Keep existing button UI — only adjust spacing/flow */
+    padding: 10px 18px;
+    border-radius: 6px;
+}
+
 .tier-item {
     display: flex;
     align-items: center;
@@ -1302,6 +1331,15 @@ body {
     font-weight: 600;
     text-decoration: none;
     transition: all 0.15s ease;
+}
+
+/* Icon sizing for footer/pre-tiers buttons */
+.footer-btn svg {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    vertical-align: middle;
+    fill: currentColor;
 }
 
 .footer-btn.feedback-btn {
